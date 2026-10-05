@@ -1,0 +1,76 @@
+from django.contrib.auth import get_user_model
+from rest_framework import status
+from rest_framework.test import APITestCase
+from rest_framework_simplejwt.tokens import AccessToken
+
+from .models import Article
+
+User = get_user_model()
+
+
+def auth(client, user):
+    token = AccessToken.for_user(user)
+    client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+
+
+class ArticleCRUDTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user("alice", password="pass12345")
+        self.bob = User.objects.create_user("bob", password="pass12345")
+        self.article = Article.objects.create(
+            title="First", subtitle="Sub", description="Body", author=self.alice
+        )
+        self.payload = {"title": "New", "subtitle": "S", "description": "D"}
+        self.url = f"/articles/{self.article.id}/"
+
+    def test_list_is_public(self):
+        r = self.client.get("/articles/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+
+    def test_retrieve_is_public(self):
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["author"], "alice")
+
+    def test_create_requires_token(self):
+        r = self.client.post("/articles/", self.payload)
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_create_sets_author_from_token(self):
+        auth(self.client, self.bob)
+        r = self.client.post("/articles/", {**self.payload, "author": "alice"})
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r.data["author"], "bob")
+
+    def test_put_by_author(self):
+        auth(self.client, self.alice)
+        r = self.client.put(self.url, self.payload)
+        self.assertEqual(r.status_code, 200)
+        self.article.refresh_from_db()
+        self.assertEqual(self.article.title, "New")
+
+    def test_patch_by_author(self):
+        auth(self.client, self.alice)
+        r = self.client.patch(self.url, {"title": "Patched"})
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["description"], "Body")
+
+    def test_non_author_cannot_update_or_delete(self):
+        auth(self.client, self.bob)
+        self.assertEqual(self.client.patch(self.url, {"title": "x"}).status_code, 403)
+        self.assertEqual(self.client.delete(self.url).status_code, 403)
+
+    def test_delete_by_author(self):
+        auth(self.client, self.alice)
+        r = self.client.delete(self.url)
+        self.assertEqual(r.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Article.objects.filter(pk=self.article.id).exists())
+
+    def test_missing_title_rejected(self):
+        auth(self.client, self.alice)
+        r = self.client.post("/articles/", {"description": "no title"})
+        self.assertEqual(r.status_code, 400)
+
+    def test_retrieve_404(self):
+        self.assertEqual(self.client.get("/articles/9999/").status_code, 404)
