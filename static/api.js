@@ -23,3 +23,18 @@ if (getAccess()) {
     window.location = "/login/";
   });
 }
+// Har protected API call isi se karo: token header khud lag jata hai
+async function apiFetch(url, options = {}) {
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+    Authorization: "Bearer " + getAccess(),
+  };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    // token nahi hai ya expire ho gaya: dobara login
+    clearTokens();
+    window.location = "/login/";
+  }
+  return res;
+}

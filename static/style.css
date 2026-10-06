@@ -6,3 +6,7 @@ form label { display: block; margin-bottom: 12px; }
 form input { display: block; width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
 button { padding: 8px 16px; cursor: pointer; }
 .error { color: #c00; }
+.card { background: #fff; padding: 12px 16px; margin-bottom: 12px; border-radius: 6px; }
+.card h2 { margin: 0 0 4px; font-size: 1.1rem; }
+.card small { color: #666; }
+.pager { display: flex; gap: 12px; align-items: center; margin-top: 16px; }

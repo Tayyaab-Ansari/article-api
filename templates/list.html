@@ -1,5 +1,49 @@
 {% extends "base.html" %}
+{% block title %}Articles{% endblock %}
+
 {% block content %}
 <h1>Articles</h1>
-<p>List yahan aayegi.</p>
+<div id="articles"></div>
+<div class="pager">
+  <button id="prev" disabled>Previous</button>
+  <span id="page-info"></span>
+  <button id="next" disabled>Next</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1;
+
+async function loadArticles() {
+  const res = await apiFetch("/articles/?page=" + page);
+  if (!res.ok) return;
+  const data = await res.json();
+
+  const box = document.getElementById("articles");
+  box.innerHTML = "";
+  data.results.forEach((a) => {
+    const div = document.createElement("div");
+    div.className = "card";
+    const title = document.createElement("h2");
+    title.textContent = a.title;
+    const meta = document.createElement("small");
+    meta.textContent = "by " + a.author + " | " + new Date(a.created_at).toLocaleDateString();
+    const desc = document.createElement("p");
+    desc.textContent = a.description;
+    div.append(title, meta, desc);
+    box.appendChild(div);
+  });
+
+  document.getElementById("prev").disabled = !data.previous;
+  document.getElementById("next").disabled = !data.next;
+  document.getElementById("page-info").textContent = "Page " + page + " (total " + data.count + ")";
+}
+
+document.getElementById("prev").addEventListener("click", () => { page--; loadArticles(); });
+document.getElementById("next").addEventListener("click", () => { page++; loadArticles(); });
+
+// Login nahi hai to seedha login page
+if (!getAccess()) { window.location = "/login/"; } else { loadArticles(); }
+</script>
 {% endblock %}
