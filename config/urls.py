@@ -17,11 +17,21 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.contrib.auth.decorators import user_passes_test
+
+superuser_required = user_passes_test(
+    lambda u: u.is_active and u.is_superuser,
+    login_url="/admin/login/",
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("accounts.urls")),
     path("", include("articles.urls")),
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
-    path("api/docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),
+    path("api/schema/", superuser_required(SpectacularAPIView.as_view()), name="schema"),
+    path(
+        "api/docs/",
+        superuser_required(SpectacularSwaggerView.as_view(url_name="schema")),
+        name="swagger-ui",
+    ),
 ]
