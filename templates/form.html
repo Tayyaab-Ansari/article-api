@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}New article{% endblock %}
+
+{% block content %}
+<h1>New article</h1>
+<form id="article-form">
+  <label>Title <input name="title" required maxlength="255"></label>
+  <label>Subtitle <input name="subtitle" maxlength="255"></label>
+  <label>Description <textarea name="description" rows="6" required></textarea></label>
+  <button type="submit">Save</button>
+  <p id="error" class="error"></p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+if (!getAccess()) { window.location = "/login/"; }
+
+document.getElementById("article-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const res = await apiFetch("/articles/", {
+    method: "POST",
+    body: JSON.stringify({
+      title: form.get("title"),
+      subtitle: form.get("subtitle"),
+      description: form.get("description"),
+    }),
+  });
+  if (res.status === 201) {
+    window.location = "/";
+  } else if (res.status === 400) {
+    const errors = await res.json();
+    // {"title": ["This field may not be blank."]} jaisa format
+    document.getElementById("error").textContent = Object.entries(errors)
+      .map(([field, msgs]) => field + ": " + msgs.join(" "))
+      .join(" | ");
+  }
+});
+</script>
+{% endblock %}

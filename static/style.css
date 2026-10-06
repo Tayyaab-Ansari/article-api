@@ -3,7 +3,7 @@ nav { background: #222; padding: 12px 20px; display: flex; justify-content: spac
 nav a { color: #fff; margin-right: 12px; text-decoration: none; }
 main { max-width: 700px; margin: 24px auto; padding: 0 16px; }
 form label { display: block; margin-bottom: 12px; }
-form input { display: block; width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
+form input, form textarea { display: block; width: 100%; padding: 8px; margin-top: 4px; box-sizing: border-box; }
 button { padding: 8px 16px; cursor: pointer; }
 .error { color: #c00; }
 .card { background: #fff; padding: 12px 16px; margin-bottom: 12px; border-radius: 6px; }
