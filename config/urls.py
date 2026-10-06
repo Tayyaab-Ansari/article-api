@@ -31,6 +31,7 @@ urlpatterns = [
     path("", TemplateView.as_view(template_name="list.html"), name="home"),
     path("login/", TemplateView.as_view(template_name="login.html"), name="login"),
     path("new/", TemplateView.as_view(template_name="form.html"), name="new"),
+    path("edit/<int:pk>/", TemplateView.as_view(template_name="form.html"), name="edit"),
     path("", include("articles.urls")),
     path("api/schema/", superuser_required(SpectacularAPIView.as_view()), name="schema"),
     path(

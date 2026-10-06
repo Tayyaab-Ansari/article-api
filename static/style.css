@@ -10,3 +10,4 @@ button { padding: 8px 16px; cursor: pointer; }
 .card h2 { margin: 0 0 4px; font-size: 1.1rem; }
 .card small { color: #666; }
 .pager { display: flex; gap: 12px; align-items: center; margin-top: 16px; }
+.card a { margin-right: 8px; }  

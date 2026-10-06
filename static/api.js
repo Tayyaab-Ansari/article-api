@@ -38,3 +38,11 @@ async function apiFetch(url, options = {}) {
   }
   return res;
 }
+// Logged-in user ka username (/auth/me/ se), ek baar fetch karke yaad rakho
+let _me = null;
+async function getMe() {
+  if (_me) return _me;
+  const res = await apiFetch("/auth/me/");
+  if (res.ok) _me = await res.json();
+  return _me;
+}

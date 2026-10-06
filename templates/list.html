@@ -16,6 +16,7 @@
 let page = 1;
 
 async function loadArticles() {
+  const me = await getMe();
   const res = await apiFetch("/articles/?page=" + page);
   if (!res.ok) return;
   const data = await res.json();
@@ -32,6 +33,20 @@ async function loadArticles() {
     const desc = document.createElement("p");
     desc.textContent = a.description;
     div.append(title, meta, desc);
+    if (me && a.author === me.username) {
+      const edit = document.createElement("a");
+      edit.href = "/edit/" + a.id + "/";
+      edit.textContent = "Edit";
+      const del = document.createElement("button");
+      del.textContent = "Delete";
+      del.addEventListener("click", async () => {
+        if (!confirm("Delete this article?")) return;
+        const r = await apiFetch("/articles/" + a.id + "/", { method: "DELETE" });
+        if (r.status === 204) loadArticles();
+        else if (r.status === 403) alert("Not allowed.");
+      });
+      div.append(edit, " ", del);
+    }
     box.appendChild(div);
   });
 

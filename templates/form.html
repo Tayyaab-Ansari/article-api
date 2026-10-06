@@ -2,7 +2,7 @@
 {% block title %}New article{% endblock %}
 
 {% block content %}
-<h1>New article</h1>
+<h1 id="heading">New article</h1>
 <form id="article-form">
   <label>Title <input name="title" required maxlength="255"></label>
   <label>Subtitle <input name="subtitle" maxlength="255"></label>
@@ -11,30 +11,48 @@
   <p id="error" class="error"></p>
 </form>
 {% endblock %}
-
 {% block scripts %}
 <script>
 if (!getAccess()) { window.location = "/login/"; }
 
-document.getElementById("article-form").addEventListener("submit", async (e) => {
+// URL se id nikalo: /edit/5/ -> 5, /new/ -> null
+const match = window.location.pathname.match(/^\/edit\/(\d+)\/$/);
+const articleId = match ? match[1] : null;
+const form = document.getElementById("article-form");
+
+// Edit mode: purana data form mein bharo
+if (articleId) {
+  document.getElementById("heading").textContent = "Edit article";
+  apiFetch("/articles/" + articleId + "/").then(async (res) => {
+    if (!res.ok) { window.location = "/"; return; }
+    const a = await res.json();
+    form.title.value = a.title;
+    form.subtitle.value = a.subtitle;
+    form.description.value = a.description;
+  });
+}
+
+form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  const form = new FormData(e.target);
-  const res = await apiFetch("/articles/", {
-    method: "POST",
+  const data = new FormData(form);
+  const res = await apiFetch(articleId ? "/articles/" + articleId + "/" : "/articles/", {
+    method: articleId ? "PUT" : "POST",
     body: JSON.stringify({
-      title: form.get("title"),
-      subtitle: form.get("subtitle"),
-      description: form.get("description"),
+      title: data.get("title"),
+      subtitle: data.get("subtitle"),
+      description: data.get("description"),
     }),
   });
-  if (res.status === 201) {
+  const err = document.getElementById("error");
+  if (res.ok) {
     window.location = "/";
   } else if (res.status === 400) {
     const errors = await res.json();
-    // {"title": ["This field may not be blank."]} jaisa format
-    document.getElementById("error").textContent = Object.entries(errors)
+    err.textContent = Object.entries(errors)
       .map(([field, msgs]) => field + ": " + msgs.join(" "))
       .join(" | ");
+  } else if (res.status === 403) {
+    err.textContent = "You can only edit your own articles.";
   }
 });
 </script>
