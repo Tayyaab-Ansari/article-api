@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<h1>Login</h1>
+<form id="login-form">
+  <label>Username <input name="username" required></label>
+  <label>Password <input name="password" type="password" required></label>
+  <button type="submit">Login</button>
+  <p id="error" class="error"></p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = new FormData(e.target);
+  const res = await fetch("/auth/login/", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({
+      username: form.get("username"),
+      password: form.get("password"),
+    }),
+  });
+  const data = await res.json();
+  if (res.ok) {
+    saveTokens(data.access, data.refresh);
+    window.location = "/";
+  } else {
+    document.getElementById("error").textContent = data.detail || "Login failed";
+  }
+});
+</script>
+{% endblock %}

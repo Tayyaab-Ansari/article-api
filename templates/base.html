@@ -1,0 +1,26 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Articles{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'style.css' %}">
+</head>
+<body>
+  <nav>
+    <a href="/">Articles</a>
+    <span id="nav-right">
+      <a href="/login/" id="login-link">Login</a>
+      <a href="#" id="logout-link" hidden>Logout</a>
+    </span>
+  </nav>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="{% static 'api.js' %}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

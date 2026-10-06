@@ -14,6 +14,7 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+from django.views.generic import TemplateView   
 from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
@@ -27,6 +28,8 @@ superuser_required = user_passes_test(
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("auth/", include("accounts.urls")),
+    path("", TemplateView.as_view(template_name="list.html"), name="home"),
+    path("login/", TemplateView.as_view(template_name="login.html"), name="login"),
     path("", include("articles.urls")),
     path("api/schema/", superuser_required(SpectacularAPIView.as_view()), name="schema"),
     path(
