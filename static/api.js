@@ -15,6 +15,7 @@ function clearTokens() {
 // Navbar: logged in ho to Logout dikhao, warna Login
 if (getAccess()) {
   document.getElementById("login-link").hidden = true;
+  document.getElementById("register-link").hidden = true;
   const out = document.getElementById("logout-link");
   out.hidden = false;
   out.addEventListener("click", (e) => {
