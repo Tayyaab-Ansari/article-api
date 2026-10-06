@@ -8,7 +8,7 @@ from .serializers import ArticleSerializer
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.select_related("author")
     serializer_class = ArticleSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated, IsAuthorOrReadOnly]
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)
