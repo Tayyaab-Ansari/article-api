@@ -23,16 +23,36 @@ class ArticleCRUDTests(APITestCase):
         self.payload = {"title": "New", "subtitle": "S", "description": "D"}
         self.url = f"/articles/{self.article.id}/"
 
-    def test_list_is_public(self):
+    def test_list_requires_token(self):
+        r = self.client.get("/articles/")
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_list_with_token(self):
+        auth(self.client, self.bob)
         r = self.client.get("/articles/")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 1)
 
-    def test_retrieve_is_public(self):
+    def test_retrieve_requires_token(self):
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_retrieve_with_token(self):
+        auth(self.client, self.bob)
         r = self.client.get(self.url)
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["author"], "alice")
 
+    def test_retrieve_404(self):
+        auth(self.client, self.alice)
+        self.assertEqual(self.client.get("/articles/9999/").status_code, 404)
+
+    def test_invalid_token_rejected(self):
+        self.client.credentials(HTTP_AUTHORIZATION="Bearer not-a-real-token")
+        r = self.client.get("/articles/")
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    
     def test_create_requires_token(self):
         r = self.client.post("/articles/", self.payload)
         self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
@@ -71,6 +91,3 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.alice)
         r = self.client.post("/articles/", {"description": "no title"})
         self.assertEqual(r.status_code, 400)
-
-    def test_retrieve_404(self):
-        self.assertEqual(self.client.get("/articles/9999/").status_code, 404)
