@@ -91,3 +91,42 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.alice)
         r = self.client.post("/articles/", {"description": "no title"})
         self.assertEqual(r.status_code, 400)
+
+class ArticleSearchTests(APITestCase):
+    def setUp(self):
+        self.alice = User.objects.create_user("alice", password="pass12345")
+        self.bob = User.objects.create_user("bob", password="pass12345")
+        Article.objects.create(
+            title="Docker basics", subtitle="Containers",
+            description="Run apps anywhere", author=self.alice,
+        )
+        Article.objects.create(
+            title="JWT guide", subtitle="Tokens",
+            description="Login with tokens", author=self.bob,
+        )
+        auth(self.client, self.alice)
+
+    def test_search_by_title(self):
+        r = self.client.get("/articles/?search=docker")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["title"], "Docker basics")
+
+    def test_search_is_case_insensitive(self):
+        r = self.client.get("/articles/?search=DOCKER")
+        self.assertEqual(r.data["count"], 1)
+
+    def test_search_by_author_username(self):
+        r = self.client.get("/articles/?search=bob")
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["title"], "JWT guide")
+
+    def test_search_no_match(self):
+        r = self.client.get("/articles/?search=xyzabc")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 0)
+
+    def test_search_requires_token(self):
+        self.client.credentials()
+        r = self.client.get("/articles/?search=docker")
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
