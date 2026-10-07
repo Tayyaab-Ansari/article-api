@@ -1,59 +1,110 @@
 {% extends "base.html" %}
-{% block title %}New article{% endblock %}
+{% block title %}Write{% endblock %}
 
 {% block content %}
-<h1 id="heading">New article</h1>
-<form id="article-form">
-  <label>Title <input name="title" required maxlength="255"></label>
-  <label>Subtitle <input name="subtitle" maxlength="255"></label>
-  <label>Description <textarea name="description" rows="6" required></textarea></label>
-  <button type="submit">Save</button>
-  <p id="error" class="error"></p>
+<form id="article-form" class="editor" novalidate>
+  <div class="page-head">
+    <div>
+      <h1 id="form-heading">New article</h1>
+      <p class="page-sub" id="form-sub">Give it a title, then write.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <p class="alert" data-form-error role="alert" hidden></p>
+
+    <div class="field">
+      <label for="title" class="sr-only">Title</label>
+      <input class="field-input title-input" id="title" name="title" placeholder="Title" maxlength="200" required autofocus>
+      <p class="field-error" data-error-for="title" hidden></p>
+    </div>
+
+    <div class="field">
+      <label for="subtitle">Subtitle <span class="hint">(optional)</span></label>
+      <input class="field-input" id="subtitle" name="subtitle" placeholder="One line that says what this is about" maxlength="300">
+      <p class="field-error" data-error-for="subtitle" hidden></p>
+    </div>
+
+    <div class="field">
+      <label for="description">Article</label>
+      <textarea class="field-input prose-input" id="description" name="description" placeholder="Start writing. Leave a blank line between paragraphs." required></textarea>
+      <p class="count" id="count">0 words</p>
+      <p class="field-error" data-error-for="description" hidden></p>
+    </div>
+
+    <div class="editor-foot">
+      <a class="btn btn-ghost" href="/">Cancel</a>
+      <button class="btn btn-primary" id="save-btn" type="submit">Publish</button>
+    </div>
+  </div>
 </form>
 {% endblock %}
+
 {% block scripts %}
 <script>
-if (!getAccess()) { window.location = "/login/"; }
+(function () {
+  if (!getAccess()) { window.location = "/login/"; return; }
 
-// URL se id nikalo: /edit/5/ -> 5, /new/ -> null
-const match = window.location.pathname.match(/^\/edit\/(\d+)\/$/);
-const articleId = match ? match[1] : null;
-const form = document.getElementById("article-form");
+  const form = document.getElementById("article-form");
+  const saveBtn = document.getElementById("save-btn");
+  const match = location.pathname.match(/\/edit\/(\d+)\/?$/);
+  const editId = match ? match[1] : null;
 
-// Edit mode: purana data form mein bharo
-if (articleId) {
-  document.getElementById("heading").textContent = "Edit article";
-  apiFetch("/articles/" + articleId + "/").then(async (res) => {
-    if (!res.ok) { window.location = "/"; return; }
-    const a = await res.json();
-    form.title.value = a.title;
-    form.subtitle.value = a.subtitle;
-    form.description.value = a.description;
-  });
-}
-
-form.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const data = new FormData(form);
-  const res = await apiFetch(articleId ? "/articles/" + articleId + "/" : "/articles/", {
-    method: articleId ? "PUT" : "POST",
-    body: JSON.stringify({
-      title: data.get("title"),
-      subtitle: data.get("subtitle"),
-      description: data.get("description"),
-    }),
-  });
-  const err = document.getElementById("error");
-  if (res.ok) {
-    window.location = "/";
-  } else if (res.status === 400) {
-    const errors = await res.json();
-    err.textContent = Object.entries(errors)
-      .map(([field, msgs]) => field + ": " + msgs.join(" "))
-      .join(" | ");
-  } else if (res.status === 403) {
-    err.textContent = "You can only edit your own articles.";
+  function updateCount() {
+    const words = form.description.value.trim().split(/\s+/).filter(Boolean).length;
+    document.getElementById("count").textContent = words + (words === 1 ? " word" : " words");
   }
-});
+  form.description.addEventListener("input", updateCount);
+
+  async function loadForEdit() {
+    document.getElementById("form-heading").textContent = "Edit article";
+    document.getElementById("form-sub").textContent = "Change anything, then save.";
+    saveBtn.textContent = "Save changes";
+    document.title = "Edit | Articles";
+    const res = await apiFetch("/articles/" + editId + "/");
+    if (res.status === 404) { flash("That article does not exist.", "error"); window.location = "/"; return; }
+    if (!res.ok) { toast("Could not load the article.", "error"); return; }
+    const a = await res.json();
+    form.title.value = a.title || "";
+    form.subtitle.value = a.subtitle || "";
+    form.description.value = a.description || "";
+    updateCount();
+  }
+  if (editId) loadForEdit();
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    clearErrors(form);
+    setBusy(saveBtn, true, editId ? "Saving..." : "Publishing...");
+    try {
+      const res = await apiFetch(editId ? "/articles/" + editId + "/" : "/articles/", {
+        method: editId ? "PUT" : "POST",
+        body: JSON.stringify({
+          title: form.title.value,
+          subtitle: form.subtitle.value,
+          description: form.description.value,
+        }),
+      });
+      if (res.status === 201 || res.status === 200) {
+        flash(editId ? "Changes saved." : "Published.");
+        window.location = "/";
+        return;
+      }
+      if (res.status === 403) {
+        flash("You can only edit your own articles.", "error");
+        window.location = "/";
+        return;
+      }
+      if (res.status === 400) {
+        showErrors(form, await res.json());
+      } else if (res.status !== 401) {
+        toast("Something went wrong. Try again.", "error");
+      }
+    } catch (err) {
+      toast("Could not reach the server.", "error");
+    }
+    setBusy(saveBtn, false);
+  });
+})();
 </script>
 {% endblock %}

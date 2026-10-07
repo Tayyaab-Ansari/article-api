@@ -2,107 +2,317 @@
 {% block title %}Articles{% endblock %}
 
 {% block content %}
-<h1>Articles</h1>
+<div class="page-head">
+  <div>
+    <h1>Articles</h1>
+    <p class="page-sub" id="summary">Loading...</p>
+  </div>
+</div>
 
-<form id="search-form" class="search">
-  <input id="search-input" type="search" placeholder="Search articles..." maxlength="100">
-  <button type="submit">Search</button>
-  <button type="button" id="clear-search" hidden>Clear</button>
+<form class="search" id="search-form" role="search">
+  <div class="search-field">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <label for="q" class="sr-only">Search articles</label>
+    <input class="field-input" id="q" type="search" placeholder="Search by title, topic, text or author" autocomplete="off">
+  </div>
+  <button class="btn btn-primary" type="submit">Search</button>
 </form>
-<p id="result-info"></p>
 
-<div id="articles"></div>
-<div class="pager">
-  <button id="prev" disabled>Previous</button>
+<div id="results" class="entries" aria-live="polite" hidden></div>
+
+<div id="empty" class="entries empty" hidden>
+  <h2 id="empty-title">No articles yet</h2>
+  <p id="empty-text">Be the first to write one.</p>
+  <a class="btn btn-primary" id="empty-action" href="/new/">Write an article</a>
+</div>
+
+<div id="skeleton" class="entries">
+  <div class="skeleton"><div class="sk title"></div><div class="sk"></div><div class="sk w90"></div><div class="sk w70"></div></div>
+  <div class="skeleton"><div class="sk title"></div><div class="sk"></div><div class="sk w90"></div><div class="sk w70"></div></div>
+</div>
+
+<div class="pager" id="pager" hidden>
+  <button type="button" class="btn btn-ghost" id="prev">Previous</button>
   <span id="page-info"></span>
-  <button id="next" disabled>Next</button>
+  <button type="button" class="btn btn-ghost" id="next">Next</button>
 </div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-let page = 1;
-let query = "";
-let requestId = 0;   // sirf sab se nayi request ka jawab dikhane ke liye
+(function () {
+  if (!getAccess()) { window.location = "/login/"; return; }
 
-async function loadArticles() {
-  const myId = ++requestId;
-  const me = await getMe();
+  const PAGE_SIZE = 10;
+  const params = new URLSearchParams(location.search);
+  let query = params.get("q") || "";
+  let page = parseInt(params.get("page"), 10) || 1;
+  let requestId = 0;           // purane jawab naye jawab ko na bigarein
+  let me = null;
 
-  let url = "/articles/?page=" + page;
-  if (query) url += "&search=" + encodeURIComponent(query);
-  const res = await apiFetch(url);
+  const $ = (id) => document.getElementById(id);
+  const input = $("q");
+  input.value = query;
 
-  if (myId !== requestId) return;          // koi nayi request aa chuki hai, ye purani hai
-  if (res.status === 404 && page > 1) {    // page range se bahar, pehle page par jao
-    page = 1;
-    return loadArticles();
-  }
-  if (!res.ok) return;
-  const data = await res.json();
-
-  const box = document.getElementById("articles");
-  box.innerHTML = "";
-
-  if (data.results.length === 0) {
-    const none = document.createElement("p");
-    none.textContent = query ? 'No articles found for "' + query + '".' : "No articles yet.";
-    box.appendChild(none);
+  /* ----- Dikhawa ke helpers ----- */
+  function paragraphs(text) {
+    return (text || "").split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   }
 
-  data.results.forEach((a) => {
-    const div = document.createElement("div");
-    div.className = "card";
-    const title = document.createElement("h2");
-    title.textContent = a.title;
-    const meta = document.createElement("small");
-    meta.textContent = "by " + a.author + " | " + new Date(a.created_at).toLocaleDateString();
-    const desc = document.createElement("p");
-    desc.textContent = a.description;
-    div.append(title, meta, desc);
+  // Search ka lafz jahan mila uske aas-paas ka tukda
+  function snippetAround(text, q, radius) {
+    const flat = text.replace(/\s+/g, " ");
+    const words = q.split(/\s+/).filter(Boolean);
+    let idx = -1;
+    for (const w of words) {
+      const i = flat.toLowerCase().indexOf(w.toLowerCase());
+      if (i !== -1 && (idx === -1 || i < idx)) idx = i;
+    }
+    if (idx === -1) return null;
+    const start = Math.max(0, idx - radius);
+    const end = Math.min(flat.length, idx + radius);
+    return (start > 0 ? "... " : "") + flat.slice(start, end).trim() + (end < flat.length ? " ..." : "");
+  }
 
-    if (me && a.author === me.username) {
+  function excerpt(text, q) {
+    const paras = paragraphs(text);
+    const first = paras[0] || "";
+    if (first.length > 300) {
+      // Search ka lafz pehle paragraph mein na ho to lafz ke aas-paas ka tukda dikhao
+      const s = q && snippetAround(text, q, 150);
+      if (s) return s;
+      return first.slice(0, 300).trim() + " ...";
+    }
+    if (q) {
+      const inFirst = q.split(/\s+/).filter(Boolean).some((w) => first.toLowerCase().includes(w.toLowerCase()));
+      if (!inFirst) {
+        const s = snippetAround(text, q, 150);
+        if (s) return s;
+      }
+    }
+    return first;
+  }
+
+  function buildEntry(a) {
+    const el = document.createElement("article");
+    el.className = "entry";
+
+    const h = document.createElement("h2");
+    h.className = "entry-title";
+    appendHighlighted(h, a.title, query);
+    el.appendChild(h);
+
+    if (a.subtitle) {
+      const sub = document.createElement("p");
+      sub.className = "entry-sub";
+      appendHighlighted(sub, a.subtitle, query);
+      el.appendChild(sub);
+    }
+
+    const name = authorName(a.author);
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.appendChild(makeAvatar(name));
+    const who = document.createElement("span");
+    who.className = "meta-name";
+    appendHighlighted(who, name, query);
+    meta.appendChild(who);
+    const time = document.createElement("time");
+    time.dateTime = a.created_at || "";
+    time.textContent = formatDate(a.created_at);
+    meta.appendChild(time);
+    el.appendChild(meta);
+
+    const prose = document.createElement("div");
+    prose.className = "prose";
+    const paras = paragraphs(a.description);
+    const short = excerpt(a.description, query);
+    const canExpand = paras.length > 1 || short !== (paras[0] || "");
+
+    function renderShort() {
+      prose.replaceChildren();
+      const p = document.createElement("p");
+      appendHighlighted(p, short, query);
+      prose.appendChild(p);
+    }
+    function renderFull() {
+      prose.replaceChildren();
+      paras.forEach((t) => {
+        const p = document.createElement("p");
+        appendHighlighted(p, t, query);
+        prose.appendChild(p);
+      });
+    }
+    renderShort();
+    el.appendChild(prose);
+
+    const actions = document.createElement("div");
+    actions.className = "entry-actions";
+
+    if (canExpand) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "btn-text";
+      more.textContent = "Read more";
+      more.setAttribute("aria-expanded", "false");
+      more.onclick = () => {
+        const open = more.getAttribute("aria-expanded") === "true";
+        open ? renderShort() : renderFull();
+        more.setAttribute("aria-expanded", String(!open));
+        more.textContent = open ? "Read more" : "Show less";
+      };
+      actions.appendChild(more);
+    }
+
+    const spacer = document.createElement("span");
+    spacer.className = "spacer";
+    actions.appendChild(spacer);
+
+    // Edit/Delete sirf apne articles par
+    if (me && me.username && name === me.username) {
       const edit = document.createElement("a");
+      edit.className = "btn-text";
       edit.href = "/edit/" + a.id + "/";
       edit.textContent = "Edit";
+      actions.appendChild(edit);
+
       const del = document.createElement("button");
+      del.type = "button";
+      del.className = "btn-text danger";
       del.textContent = "Delete";
-      del.addEventListener("click", async () => {
-        if (!confirm("Delete this article?")) return;
-        const r = await apiFetch("/articles/" + a.id + "/", { method: "DELETE" });
-        if (r.status === 204) loadArticles();
-        else if (r.status === 403) alert("Not allowed.");
-      });
-      div.append(edit, " ", del);
+      del.onclick = () => removeArticle(a);
+      actions.appendChild(del);
     }
-    box.appendChild(div);
+    el.appendChild(actions);
+    return el;
+  }
+
+  async function removeArticle(a) {
+    const ok = await confirmDialog("Delete this article?", "“" + a.title + "” will be removed for good.", "Delete");
+    if (!ok) return;
+    const res = await apiFetch("/articles/" + a.id + "/", { method: "DELETE" });
+    if (res.status === 204) {
+      toast("Deleted.");
+      // Is page ka akhri article tha to pichle page par jao
+      if (page > 1 && $("results").children.length === 1) page -= 1;
+      load();
+    } else if (res.status === 403) {
+      toast("You can only delete your own articles.", "error");
+    } else if (res.status !== 401) {
+      toast("Could not delete. Try again.", "error");
+    }
+  }
+
+  /* ----- Server se lana ----- */
+  function showOnly(which) {
+    $("skeleton").hidden = which !== "skeleton";
+    $("results").hidden = which !== "results";
+    $("empty").hidden = which !== "empty";
+    if (which !== "results") $("pager").hidden = true;
+  }
+
+  async function load() {
+    const myId = ++requestId;
+    showOnly("skeleton");
+    const qs = new URLSearchParams();
+    if (query) qs.set("search", query);
+    qs.set("page", page);
+    let res;
+    try {
+      res = await apiFetch("/articles/?" + qs.toString());
+    } catch (e) {
+      if (myId !== requestId) return;
+      showOnly("empty");
+      $("summary").textContent = "";
+      $("empty-title").textContent = "Could not load articles";
+      $("empty-text").textContent = "Check your connection and try again.";
+      $("empty-action").textContent = "Try again";
+      $("empty-action").href = location.pathname + location.search;
+      return;
+    }
+    if (myId !== requestId) return;            // naya search aa chuka hai
+    if (res.status === 404 && page > 1) {      // page ab maujood nahi
+      page = 1; load(); return;
+    }
+    if (!res.ok) {
+      if (res.status !== 401) toast("Could not load articles.", "error");
+      return;
+    }
+    const data = await res.json();
+    render(data);
+  }
+
+  function render(data) {
+    const box = $("results");
+    box.replaceChildren();
+    if (!data.results.length) {
+      showOnly("empty");
+      $("summary").textContent = query ? "0 results" : "";
+      if (query) {
+        $("empty-title").textContent = "Nothing found for “" + query + "”";
+        $("empty-text").textContent = "Check the spelling or try a shorter word. Search looks at titles, subtitles, text and author names.";
+        $("empty-action").textContent = "Clear search";
+        $("empty-action").href = "/";
+      } else {
+        $("empty-title").textContent = "No articles yet";
+        $("empty-text").textContent = "Be the first to write one.";
+        $("empty-action").textContent = "Write an article";
+        $("empty-action").href = "/new/";
+      }
+      return;
+    }
+    data.results.forEach((a) => box.appendChild(buildEntry(a)));
+    showOnly("results");
+
+    const total = data.count;
+    $("summary").textContent = query
+      ? total + (total === 1 ? " result for “" : " results for “") + query + "”"
+      : total + (total === 1 ? " article" : " articles");
+
+    const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    $("pager").hidden = pages <= 1;
+    $("page-info").textContent = "Page " + page + " of " + pages;
+    $("prev").disabled = !data.previous;
+    $("next").disabled = !data.next;
+  }
+
+  /* ----- URL ko sath sath badlo (link share ho sake) ----- */
+  function syncUrl() {
+    const p = new URLSearchParams();
+    if (query) p.set("q", query);
+    if (page > 1) p.set("page", page);
+    const s = p.toString();
+    history.replaceState(null, "", location.pathname + (s ? "?" + s : ""));
+  }
+
+  function go(newPage) {
+    page = newPage;
+    syncUrl();
+    load();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  /* ----- Events ----- */
+  $("search-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    query = input.value.trim();
+    go(1);
   });
 
-  document.getElementById("prev").disabled = !data.previous;
-  document.getElementById("next").disabled = !data.next;
-  document.getElementById("page-info").textContent = "Page " + page + " (total " + data.count + ")";
-  document.getElementById("result-info").textContent =
-    query ? data.count + ' result(s) for "' + query + '"' : "";
-  document.getElementById("clear-search").hidden = !query;
-}
+  // Likhte likhte search (thora ruk kar, har key par nahi)
+  let timer = null;
+  input.addEventListener("input", () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const q = input.value.trim();
+      if (q !== query) { query = q; go(1); }
+    }, 350);
+  });
 
-document.getElementById("search-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  query = document.getElementById("search-input").value.trim();
-  page = 1;                                 // naye search par hamesha page 1
-  loadArticles();
-});
+  $("prev").addEventListener("click", () => go(page - 1));
+  $("next").addEventListener("click", () => go(page + 1));
 
-document.getElementById("clear-search").addEventListener("click", () => {
-  document.getElementById("search-input").value = "";
-  query = "";
-  page = 1;
-  loadArticles();
-});
-
-document.getElementById("prev").addEventListener("click", () => { page--; loadArticles(); });
-document.getElementById("next").addEventListener("click", () => { page++; loadArticles(); });
-
-if (!getAccess()) { window.location = "/login/"; } else { loadArticles(); }
+  getMe().catch(() => null).then((m) => { me = m; load(); });
+})();
 </script>
 {% endblock %}

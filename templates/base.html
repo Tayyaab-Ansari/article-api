@@ -1,29 +1,48 @@
-{% load static %}
-<!doctype html>
+{% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Articles{% endblock %}</title>
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Articles{% endblock %} | Articles</title>
   <link rel="stylesheet" href="{% static 'style.css' %}">
+  <script src="{% static 'api.js' %}"></script>
 </head>
 <body>
-  <nav>
-    <a href="/">Articles</a>
-    <a href="/">Articles</a>
-    <a href="/new/">New article</a>
-    <span id="nav-right">
-      <a href="/register/" id="register-link">Register</a>
-      <a href="/login/" id="login-link">Login</a>
-      <a href="#" id="logout-link" hidden>Logout</a>
-    </span>
-  </nav>
+  <a class="skip" href="#main">Skip to content</a>
 
-  <main>
+  <header class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/"><span class="brand-mark" aria-hidden="true">A</span>Articles</a>
+      <nav class="nav-actions" aria-label="Main">
+        <div class="nav-group" data-auth="in" hidden>
+          <a class="btn btn-primary" href="/new/">Write</a>
+          <span class="nav-user"><span id="nav-avatar" class="avatar" aria-hidden="true"></span><span id="nav-name" class="name"></span></span>
+          <button type="button" id="logout-btn" class="btn btn-ghost">Log out</button>
+        </div>
+        <div class="nav-group" data-auth="out">
+          <a class="btn btn-ghost" href="/login/">Log in</a>
+          <a class="btn btn-primary" href="/register/">Sign up</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main" class="page">
     {% block content %}{% endblock %}
   </main>
 
-  <script src="{% static 'api.js' %}"></script>
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+
+  <dialog id="confirm-dialog" aria-labelledby="dlg-title">
+    <h2 id="dlg-title">Delete?</h2>
+    <p>Are you sure?</p>
+    <div class="actions">
+      <button type="button" class="btn btn-ghost" data-cancel>Cancel</button>
+      <button type="button" class="btn btn-danger" data-ok>Delete</button>
+    </div>
+  </dialog>
+
   {% block scripts %}{% endblock %}
 </body>
 </html>

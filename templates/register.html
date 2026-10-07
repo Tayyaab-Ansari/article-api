@@ -1,49 +1,69 @@
 {% extends "base.html" %}
-{% block title %}Register{% endblock %}
+{% block title %}Sign up{% endblock %}
 
 {% block content %}
-<h1>Register</h1>
-<form id="register-form">
-  <label>Username <input name="username" required></label>
-  <label>Email <input name="email" type="email"></label>
-  <label>Password <input name="password" type="password" required></label>
-  <label>Confirm password <input name="password2" type="password" required></label>
-  <button type="submit">Register</button>
-  <p id="error" class="error"></p>
-</form>
+<section class="panel auth">
+  <h1>Create your account</h1>
+  <p class="page-sub">It takes a minute. Then you can start writing.</p>
+
+  <form id="register-form" novalidate>
+    <p class="alert" data-form-error role="alert" hidden></p>
+    <div class="field">
+      <label for="username">Username</label>
+      <input class="field-input" id="username" name="username" autocomplete="username" required autofocus>
+      <p class="field-error" data-error-for="username" hidden></p>
+    </div>
+    <div class="field">
+      <label for="email">Email</label>
+      <input class="field-input" id="email" name="email" type="email" autocomplete="email" required>
+      <p class="field-error" data-error-for="email" hidden></p>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input class="field-input" id="password" name="password" type="password" autocomplete="new-password" required>
+      <p class="field-error" data-error-for="password" hidden></p>
+    </div>
+    <div class="field">
+      <label for="password2">Confirm password</label>
+      <input class="field-input" id="password2" name="password2" type="password" autocomplete="new-password" required>
+      <p class="field-error" data-error-for="password2" hidden></p>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Create account</button>
+  </form>
+  <p class="form-foot">Already have an account? <a href="/login/">Log in</a></p>
+</section>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.getElementById("register-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const f = new FormData(e.target);
-  const err = document.getElementById("error");
-  err.textContent = "";
-
-  // Register open endpoint hai, is liye apiFetch nahi, seedha fetch (token nahi chahiye)
-  const res = await fetch("/auth/register/", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      username: f.get("username"),
-      email: f.get("email"),
-      password: f.get("password"),
-      password2: f.get("password2"),
-    }),
-  });
-
-  if (res.status === 201) {
-    window.location = "/login/";
-  } else if (res.status === 400) {
-    const errors = await res.json();
-    // {"password": ["This password is too common."], "username": [...]}
-    err.textContent = Object.entries(errors)
-      .map(([field, msgs]) => field + ": " + [].concat(msgs).join(" "))
-      .join(" | ");
-  } else {
-    err.textContent = "Something went wrong (" + res.status + ")";
+  const form = e.target;
+  const btn = form.querySelector("button[type=submit]");
+  clearErrors(form);
+  setBusy(btn, true, "Creating account...");
+  try {
+    const res = await fetch("/auth/register/", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        username: form.username.value,
+        email: form.email.value,
+        password: form.password.value,
+        password2: form.password2.value,
+      }),
+    });
+    if (res.status === 201) {
+      flash("Account created. Log in to continue.");
+      window.location = "/login/";
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    showErrors(form, data);
+  } catch (err) {
+    showErrors(form, {non_field: "Could not reach the server. Check your connection."});
   }
+  setBusy(btn, false);
 });
 </script>
 {% endblock %}

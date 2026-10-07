@@ -1,36 +1,58 @@
 {% extends "base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Log in{% endblock %}
 
 {% block content %}
-<h1>Login</h1>
-<form id="login-form">
-  <label>Username <input name="username" required></label>
-  <label>Password <input name="password" type="password" required></label>
-  <button type="submit">Login</button>
-  <p id="error" class="error"></p>
-</form>
+<section class="panel auth">
+  <h1>Welcome back</h1>
+  <p class="page-sub">Log in to read and write articles.</p>
+
+  <form id="login-form" novalidate>
+    <p class="alert" data-form-error role="alert" hidden></p>
+    <div class="field">
+      <label for="username">Username</label>
+      <input class="field-input" id="username" name="username" autocomplete="username" required autofocus>
+      <p class="field-error" data-error-for="username" hidden></p>
+    </div>
+    <div class="field">
+      <label for="password">Password</label>
+      <input class="field-input" id="password" name="password" type="password" autocomplete="current-password" required>
+      <p class="field-error" data-error-for="password" hidden></p>
+    </div>
+    <button class="btn btn-primary btn-block" type="submit">Log in</button>
+  </form>
+  <p class="form-foot">New here? <a href="/register/">Create an account</a></p>
+</section>
 {% endblock %}
 
 {% block scripts %}
 <script>
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const form = new FormData(e.target);
-  const res = await fetch("/auth/login/", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({
-      username: form.get("username"),
-      password: form.get("password"),
-    }),
-  });
-  const data = await res.json();
-  if (res.ok) {
-    saveTokens(data.access, data.refresh);
-    window.location = "/";
-  } else {
-    document.getElementById("error").textContent = data.detail || "Login failed";
+  const form = e.target;
+  const btn = form.querySelector("button[type=submit]");
+  clearErrors(form);
+  setBusy(btn, true, "Logging in...");
+  try {
+    const res = await fetch("/auth/login/", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: form.username.value, password: form.password.value}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      saveTokens(data.access, data.refresh);
+      window.location = "/";
+      return;
+    }
+    if (res.status === 401 || data.detail) {
+      showErrors(form, {non_field: "Username or password is wrong. Check both and try again."});
+    } else {
+      showErrors(form, data);
+    }
+  } catch (err) {
+    showErrors(form, {non_field: "Could not reach the server. Check your connection."});
   }
+  setBusy(btn, false);
 });
 </script>
 {% endblock %}
