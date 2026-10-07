@@ -146,3 +146,29 @@ class ArticleSearchTests(APITestCase):
         self.client.credentials()
         r = self.client.get("/articles/search/?q=docker")
         self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+    def test_search_default_mode_is_contains(self):
+        r = self.client.get("/articles/search/?q=docker")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+
+    def test_search_explicit_contains_mode(self):
+        r = self.client.get("/articles/search/?q=docker&mode=contains")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+
+    def test_search_empty_mode_falls_back_to_default(self):
+        r = self.client.get("/articles/search/?q=docker&mode=")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+
+    def test_search_invalid_mode_returns_400(self):
+        r = self.client.get("/articles/search/?q=docker&mode=abc")
+        self.assertEqual(r.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("mode", r.data)
+
+    def test_search_contains_hides_other_users_drafts(self):
+        Article.objects.create(
+            title="Docker secret draft", description="x", author=self.bob, is_published=False
+        )
+        r = self.client.get("/articles/search/?q=secret&mode=contains")
+        self.assertEqual(r.data["count"], 0)
