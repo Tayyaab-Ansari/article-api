@@ -100,6 +100,12 @@
     const h = document.createElement("h2");
     h.className = "entry-title";
     appendHighlighted(h, a.title, query);
+        if (a.is_published === false) {
+      const badge = document.createElement("span");
+      badge.className = "badge-draft";
+      badge.textContent = "Draft";
+      h.appendChild(badge);
+    }
     el.appendChild(h);
 
     if (a.subtitle) {

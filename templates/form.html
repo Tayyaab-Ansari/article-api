@@ -31,10 +31,15 @@
       <p class="count" id="count">0 words</p>
       <p class="field-error" data-error-for="description" hidden></p>
     </div>
-
+        <div class="field">
+      <label class="check">
+        <input type="checkbox" id="is_published" name="is_published" checked>
+        <span>Publish this article <span class="hint">(untick to keep it as a draft only you can see)</span></span>
+      </label>
+    </div>
     <div class="editor-foot">
       <a class="btn btn-ghost" href="/">Cancel</a>
-      <button class="btn btn-primary" id="save-btn" type="submit">Publish</button>
+      <button class="btn btn-primary" id="save-btn" type="submit">Save</button>
     </div>
   </div>
 </form>
@@ -68,6 +73,7 @@
     form.title.value = a.title || "";
     form.subtitle.value = a.subtitle || "";
     form.description.value = a.description || "";
+    form.is_published.checked = !!a.is_published;
     updateCount();
   }
   if (editId) loadForEdit();
@@ -83,6 +89,7 @@
           title: form.title.value,
           subtitle: form.subtitle.value,
           description: form.description.value,
+          is_published: form.is_published.checked,
         }),
       });
       if (res.status === 201 || res.status === 200) {

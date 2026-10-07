@@ -292,3 +292,22 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
 .entry-title + .meta { margin-top: 12px; }
 .editor .title-input[aria-invalid="true"] { border-bottom-color: var(--danger); }
 .search-field input[type="search"]::-webkit-search-cancel-button { filter: grayscale(1); cursor: pointer; }
+.check { display: flex; gap: .6rem; align-items: flex-start; cursor: pointer; }
+.check input { margin-top: .25rem; }
+
+.badge-draft {
+  display: inline-block;
+  margin-left: .6rem;
+  padding: .1rem .5rem;
+  font: 600 .7rem/1.4 system-ui, sans-serif;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border-radius: 999px;
+  background: #fff3cd;
+  color: #7a5b00;
+  border: 1px solid #e8d48a;
+}
+@media (prefers-color-scheme: dark) {
+  .badge-draft { background: #3a3110; color: #f0d27a; border-color: #5c4d1a; }
+}
