@@ -91,7 +91,23 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.alice)
         r = self.client.post("/articles/", {"description": "no title"})
         self.assertEqual(r.status_code, 400)
+    def test_draft_hidden_from_other_users_list(self):
+        Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
+        auth(self.client, self.alice)
+        r = self.client.get("/articles/?search=Secret")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 0)
 
+    def test_draft_visible_to_its_author(self):
+        Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
+        auth(self.client, self.bob)
+        r = self.client.get("/articles/?search=Secret")
+        self.assertEqual(r.data["count"], 1)
+
+    def test_draft_returns_404_for_other_users(self):
+        draft = Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
+        auth(self.client, self.alice)
+        self.assertEqual(self.client.get(f"/articles/{draft.id}/").status_code, 404)
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")
