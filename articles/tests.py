@@ -172,3 +172,31 @@ class ArticleSearchTests(APITestCase):
         )
         r = self.client.get("/articles/search/?q=secret&mode=contains")
         self.assertEqual(r.data["count"], 0)
+    def test_fulltext_finds_stemmed_word(self):
+        Article.objects.create(
+            title="Deploying apps", description="Notes", author=self.alice, is_published=True
+        )
+        r = self.client.get("/articles/search/?q=deployment&mode=fulltext")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["title"], "Deploying apps")
+
+    def test_fulltext_title_ranks_above_description(self):
+        Article.objects.create(
+            title="Misc", description="a long note about docker usage", author=self.alice, is_published=True
+        )
+        r = self.client.get("/articles/search/?q=docker&mode=fulltext")
+        self.assertEqual(r.data["count"], 2)
+        self.assertEqual(r.data["results"][0]["title"], "Docker basics")
+
+    def test_fulltext_hides_other_users_drafts(self):
+        Article.objects.create(
+            title="Docker secret draft", description="x", author=self.bob, is_published=False
+        )
+        r = self.client.get("/articles/search/?q=secret&mode=fulltext")
+        self.assertEqual(r.data["count"], 0)
+
+    def test_fulltext_empty_query_returns_all_visible(self):
+        r = self.client.get("/articles/search/?mode=fulltext")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 2)
