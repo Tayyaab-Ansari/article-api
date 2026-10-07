@@ -6,6 +6,8 @@ from rest_framework.decorators import action
 from .models import Article
 from .permissions import IsAuthorOrReadOnly
 from .serializers import ArticleSerializer
+from rest_framework.response import Response
+from .search import DEFAULT_MODE, SEARCH_MODES
 
 
 class ArticleViewSet(
@@ -35,23 +37,33 @@ class ArticleViewSet(
                 type=str,
                 required=False,
                 description="Search words (title, subtitle, text or author username)",
-            )
+            ),
+            OpenApiParameter(
+                name="mode",
+                type=str,
+                required=False,
+                enum=list(SEARCH_MODES),
+                default=DEFAULT_MODE,
+                description="Search mode. Empty or missing means 'contains'.",
+            ),
         ],
         responses=ArticleSerializer(many=True),
     )
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
-        queryset = self.get_queryset()  # Option B (drafts) khud lag jata hai
-
         q = request.query_params.get("q", "").strip()
-        for word in q.split():
-            queryset = queryset.filter(
-                Q(title__icontains=word)
-                | Q(subtitle__icontains=word)
-                | Q(description__icontains=word)
-                | Q(author__username__icontains=word)
+        mode = request.query_params.get("mode") or DEFAULT_MODE
+
+        search_fn = SEARCH_MODES.get(mode)
+        if search_fn is None:
+            return Response(
+                {"mode": [f"Invalid mode '{mode}'. Choose one of: {', '.join(SEARCH_MODES)}."]},
+                status=400,
             )
+
+        queryset = search_fn(self.get_queryset(), q)  # drafts rule get_queryset() se aati hai
 
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
+    
