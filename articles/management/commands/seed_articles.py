@@ -149,7 +149,7 @@ class Command(BaseCommand):
             _, created = Article.objects.update_or_create(
                 title=title,
                 author=users[idx],
-                defaults={"subtitle": subtitle, "description": description},
+                defaults={"subtitle": subtitle, "description": description,"is_published": True,},
             )
             if created:
                 created_count += 1
