@@ -13,3 +13,4 @@ button { padding: 8px 16px; cursor: pointer; }
 .card a { margin-right: 8px; }  
 .search { display: flex; gap: 8px; margin-bottom: 12px; }
 .search input { flex: 1; width: auto; margin-top: 0; }
+.card p { white-space: pre-line; }
