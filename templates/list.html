@@ -221,11 +221,11 @@
     const myId = ++requestId;
     showOnly("skeleton");
     const qs = new URLSearchParams();
-    if (query) qs.set("search", query);
+    if (query) qs.set("q", query);
     qs.set("page", page);
     let res;
     try {
-      res = await apiFetch("/articles/?" + qs.toString());
+      res = await apiFetch("/articles/search/?" + qs.toString());
     } catch (e) {
       if (myId !== requestId) return;
       showOnly("empty");
@@ -304,17 +304,6 @@
     query = input.value.trim();
     go(1);
   });
-
-  // Likhte likhte search (thora ruk kar, har key par nahi)
-  let timer = null;
-  input.addEventListener("input", () => {
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      const q = input.value.trim();
-      if (q !== query) { query = q; go(1); }
-    }, 350);
-  });
-
   $("prev").addEventListener("click", () => go(page - 1));
   $("next").addEventListener("click", () => go(page + 1));
 
