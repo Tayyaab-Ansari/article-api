@@ -200,3 +200,19 @@ class ArticleSearchTests(APITestCase):
         r = self.client.get("/articles/search/?mode=fulltext")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 2)
+    def test_fuzzy_finds_typo(self):
+        r = self.client.get("/articles/search/?q=dokcer&mode=fuzzy")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["title"], "Docker basics")
+
+    def test_fuzzy_no_match(self):
+        r = self.client.get("/articles/search/?q=xyzabc&mode=fuzzy")
+        self.assertEqual(r.data["count"], 0)
+
+    def test_fuzzy_hides_other_users_drafts(self):
+        Article.objects.create(
+            title="Dokcer secret draft", description="x", author=self.bob, is_published=False
+        )
+        r = self.client.get("/articles/search/?q=secret&mode=fuzzy")
+        self.assertEqual(r.data["count"], 0)

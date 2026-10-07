@@ -1,5 +1,7 @@
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from django.db.models import Q
+from django.contrib.postgres.search import TrigramWordSimilarity
+from django.db.models import F, Q
+from django.db.models.functions import Greatest
 DEFAULT_MODE = "contains"
 
 
@@ -30,7 +32,24 @@ def search_fulltext(qs, q):
         .filter(rank__gt=0)
         .order_by("-rank", "-created_at")
     )
+FUZZY_THRESHOLD = 0.25
+
+
+def search_fuzzy(qs, q):
+    """Typo tolerant: title/subtitle/author par trigram word similarity."""
+    q = q.strip()
+    if not q:
+        return qs
+    qs = qs.annotate(
+        sim=Greatest(
+            TrigramWordSimilarity(q, "title"),
+            TrigramWordSimilarity(q, "subtitle"),
+            TrigramWordSimilarity(q, "author__username"),
+        )
+    )
+    return qs.filter(sim__gte=FUZZY_THRESHOLD).order_by("-sim", "-created_at")
 SEARCH_MODES = {
     "contains": search_contains,
     "fulltext": search_fulltext,
+    "fuzzy": search_fuzzy,
 }
