@@ -3,6 +3,14 @@
 
 {% block content %}
 <h1>Articles</h1>
+
+<form id="search-form" class="search">
+  <input id="search-input" type="search" placeholder="Search articles..." maxlength="100">
+  <button type="submit">Search</button>
+  <button type="button" id="clear-search" hidden>Clear</button>
+</form>
+<p id="result-info"></p>
+
 <div id="articles"></div>
 <div class="pager">
   <button id="prev" disabled>Previous</button>
@@ -14,15 +22,34 @@
 {% block scripts %}
 <script>
 let page = 1;
+let query = "";
+let requestId = 0;   // sirf sab se nayi request ka jawab dikhane ke liye
 
 async function loadArticles() {
+  const myId = ++requestId;
   const me = await getMe();
-  const res = await apiFetch("/articles/?page=" + page);
+
+  let url = "/articles/?page=" + page;
+  if (query) url += "&search=" + encodeURIComponent(query);
+  const res = await apiFetch(url);
+
+  if (myId !== requestId) return;          // koi nayi request aa chuki hai, ye purani hai
+  if (res.status === 404 && page > 1) {    // page range se bahar, pehle page par jao
+    page = 1;
+    return loadArticles();
+  }
   if (!res.ok) return;
   const data = await res.json();
 
   const box = document.getElementById("articles");
   box.innerHTML = "";
+
+  if (data.results.length === 0) {
+    const none = document.createElement("p");
+    none.textContent = query ? 'No articles found for "' + query + '".' : "No articles yet.";
+    box.appendChild(none);
+  }
+
   data.results.forEach((a) => {
     const div = document.createElement("div");
     div.className = "card";
@@ -33,6 +60,7 @@ async function loadArticles() {
     const desc = document.createElement("p");
     desc.textContent = a.description;
     div.append(title, meta, desc);
+
     if (me && a.author === me.username) {
       const edit = document.createElement("a");
       edit.href = "/edit/" + a.id + "/";
@@ -53,12 +81,28 @@ async function loadArticles() {
   document.getElementById("prev").disabled = !data.previous;
   document.getElementById("next").disabled = !data.next;
   document.getElementById("page-info").textContent = "Page " + page + " (total " + data.count + ")";
+  document.getElementById("result-info").textContent =
+    query ? data.count + ' result(s) for "' + query + '"' : "";
+  document.getElementById("clear-search").hidden = !query;
 }
+
+document.getElementById("search-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  query = document.getElementById("search-input").value.trim();
+  page = 1;                                 // naye search par hamesha page 1
+  loadArticles();
+});
+
+document.getElementById("clear-search").addEventListener("click", () => {
+  document.getElementById("search-input").value = "";
+  query = "";
+  page = 1;
+  loadArticles();
+});
 
 document.getElementById("prev").addEventListener("click", () => { page--; loadArticles(); });
 document.getElementById("next").addEventListener("click", () => { page++; loadArticles(); });
 
-// Login nahi hai to seedha login page
 if (!getAccess()) { window.location = "/login/"; } else { loadArticles(); }
 </script>
 {% endblock %}
