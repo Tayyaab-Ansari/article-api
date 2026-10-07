@@ -18,7 +18,7 @@ class ArticleCRUDTests(APITestCase):
         self.alice = User.objects.create_user("alice", password="pass12345")
         self.bob = User.objects.create_user("bob", password="pass12345")
         self.article = Article.objects.create(
-            title="First", subtitle="Sub", description="Body", author=self.alice
+            title="First", subtitle="Sub", description="Body", author=self.alice ,is_published=True
         )
         self.payload = {"title": "New", "subtitle": "S", "description": "D"}
         self.url = f"/articles/{self.article.id}/"
@@ -98,11 +98,11 @@ class ArticleSearchTests(APITestCase):
         self.bob = User.objects.create_user("bob", password="pass12345")
         Article.objects.create(
             title="Docker basics", subtitle="Containers",
-            description="Run apps anywhere", author=self.alice,
+            description="Run apps anywhere", author=self.alice,is_published=True
         )
         Article.objects.create(
             title="JWT guide", subtitle="Tokens",
-            description="Login with tokens", author=self.bob,
+            description="Login with tokens", author=self.bob,is_published=True
         )
         auth(self.client, self.alice)
 
