@@ -94,14 +94,14 @@ class ArticleCRUDTests(APITestCase):
     def test_draft_hidden_from_other_users_list(self):
         Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
         auth(self.client, self.alice)
-        r = self.client.get("/articles/?search=Secret")
+        r = self.client.get("/articles/search/?q=Secret")
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["count"], 0)
 
     def test_draft_visible_to_its_author(self):
         Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
         auth(self.client, self.bob)
-        r = self.client.get("/articles/?search=Secret")
+        r = self.client.get("/articles/search/?q=Secret")
         self.assertEqual(r.data["count"], 1)
 
     def test_draft_returns_404_for_other_users(self):
@@ -123,26 +123,26 @@ class ArticleSearchTests(APITestCase):
         auth(self.client, self.alice)
 
     def test_search_by_title(self):
-        r = self.client.get("/articles/?search=docker")
+        r = self.client.get("/articles/search/?q=docker")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 1)
         self.assertEqual(r.data["results"][0]["title"], "Docker basics")
 
     def test_search_is_case_insensitive(self):
-        r = self.client.get("/articles/?search=DOCKER")
+        r = self.client.get("/articles/search/?q=DOCKER")
         self.assertEqual(r.data["count"], 1)
 
     def test_search_by_author_username(self):
-        r = self.client.get("/articles/?search=bob")
+        r = self.client.get("/articles/search/?q=bob")
         self.assertEqual(r.data["count"], 1)
         self.assertEqual(r.data["results"][0]["title"], "JWT guide")
 
     def test_search_no_match(self):
-        r = self.client.get("/articles/?search=xyzabc")
+        r = self.client.get("/articles/search/?q=xyzabc")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 0)
 
     def test_search_requires_token(self):
         self.client.credentials()
-        r = self.client.get("/articles/?search=docker")
+        r = self.client.get("/articles/search/?q=docker")
         self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
