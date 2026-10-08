@@ -169,3 +169,6 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
 }
 INTERNAL_IPS = ["127.0.0.1"]
+# Articles behaviour flags (.env se)
+AUTO_PUBLISH_ARTICLES = config("AUTO_PUBLISH_ARTICLES", default=False, cast=bool)
+REVERT_ARTICLES_STATUS = config("REVERT_ARTICLES_STATUS", default=False, cast=bool)
