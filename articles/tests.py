@@ -224,7 +224,17 @@ class ArticleCRUDTests(APITestCase):
         self.client.delete(self.url)
         second.refresh_from_db()
         self.assertEqual(second.position, 1)
-        
+    @override_settings(REVERT_ARTICLES_STATUS=True)
+    def test_delete_with_flag_still_closes_gap(self):
+        second = Article.objects.create(
+            title="Second", description="x", author=self.alice, is_published=True
+        )
+        auth(self.client, self.alice)
+        r = self.client.delete(f"/articles/{second.id}/")
+        self.assertEqual(r.status_code, 204)
+        self.article.refresh_from_db()
+        self.assertEqual(self.article.position, 1)
+
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")
