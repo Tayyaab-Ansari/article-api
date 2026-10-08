@@ -22,3 +22,7 @@ class Article(models.Model):
 
     def __str__(self):
         return self.title
+    def apply_revert_status(self):
+        """REVERT_ARTICLES_STATUS True ho to is_published ulta karo."""
+        if settings.REVERT_ARTICLES_STATUS:
+            self.is_published = not self.is_published

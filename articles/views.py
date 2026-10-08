@@ -28,7 +28,6 @@ class ArticleViewSet(
         return qs.filter(Q(is_published=True) | Q(author=self.request.user))
 
     def perform_create(self, serializer):
-        # User ne is_published nahi bheja to .env ka default lagao
         if "is_published" in self.request.data:
             serializer.save(author=self.request.user)
         else:
@@ -36,16 +35,7 @@ class ArticleViewSet(
                 author=self.request.user,
                 is_published=settings.AUTO_PUBLISH_ARTICLES,
             )
-    def perform_update(self, serializer):
-        # User ne is_published bheja to uski value; warna flag ke hisaab se ulta
-        if "is_published" in self.request.data:
-            serializer.save()
-        elif settings.REVERT_ARTICLES_STATUS:
-            serializer.save(is_published=not serializer.instance.is_published)
-        else:
-            serializer.save()
     def perform_destroy(self, instance):
-        # Pehle author clear karo, phir delete
         instance.author = None
         instance.save(update_fields=["author"])
         instance.delete()
