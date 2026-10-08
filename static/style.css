@@ -311,3 +311,17 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (prefers-color-scheme: dark) {
   .badge-draft { background: #3a3110; color: #f0d27a; border-color: #5c4d1a; }
 }
+.badge-pos {
+  display: inline-block;
+  margin-right: 8px;
+  padding: 1px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+  background: #e1f0e8;
+  color: #0c4b33;
+  vertical-align: middle;
+}
+@media (prefers-color-scheme: dark) {
+  .badge-pos { background: #1f3a2d; color: #5dbb8d; }
+}

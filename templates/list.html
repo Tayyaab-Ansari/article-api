@@ -158,6 +158,12 @@
         badge.textContent = "Draft";
         h.appendChild(badge);
       }
+      if (a.position != null) {
+        const pos = document.createElement("span");
+        pos.className = "badge-pos";
+        pos.textContent = "#" + a.position;
+        h.insertBefore(pos, h.firstChild);
+      }
       el.appendChild(h);
 
       if (a.subtitle) {
@@ -225,7 +231,22 @@
       const spacer = document.createElement("span");
       spacer.className = "spacer";
       actions.appendChild(spacer);
+      if (a.position != null && !query) {
+        const up = document.createElement("button");
+        up.type = "button";
+        up.className = "btn-text";
+        up.textContent = "Move up";
+        up.disabled = a.position <= 1;
+        up.onclick = () => moveArticle(a, a.position - 1);
+        actions.appendChild(up);
 
+        const down = document.createElement("button");
+        down.type = "button";
+        down.className = "btn-text";
+        down.textContent = "Move down";
+        down.onclick = () => moveArticle(a, a.position + 1);
+        actions.appendChild(down);
+      }
       // Edit/Delete sirf apne articles par
       if (me && me.username && name === me.username) {
         const edit = document.createElement("a");
@@ -244,7 +265,21 @@
       el.appendChild(actions);
       return el;
     }
-
+    async function moveArticle(a, newPos) {
+      const res = await apiFetch("/articles/" + a.id + "/move/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ position: newPos }),
+      });
+      if (res.ok) {
+        toast("Moved to #" + newPos + ".");
+        load();
+      } else if (res.status === 400) {
+        toast("Cannot move there.", "error");
+      } else if (res.status !== 401) {
+        toast("Could not move. Try again.", "error");
+      }
+    }
     async function removeArticle(a) {
       const ok = await confirmDialog(
         "Delete this article?",
