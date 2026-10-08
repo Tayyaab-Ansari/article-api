@@ -126,6 +126,31 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.bob)
         r = self.client.post("/articles/", {**self.payload, "is_published": True}, format="json")
         self.assertTrue(r.data["is_published"])
+    @override_settings(REVERT_ARTICLES_STATUS=True)
+    def test_update_flips_status_when_flag_true(self):
+        auth(self.client, self.alice)
+        r = self.client.patch(self.url, {"title": "Changed"})
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data["is_published"])
+
+    @override_settings(REVERT_ARTICLES_STATUS=True)
+    def test_update_flips_back_on_second_update(self):
+        auth(self.client, self.alice)
+        self.client.patch(self.url, {"title": "One"})
+        r = self.client.patch(self.url, {"title": "Two"})
+        self.assertTrue(r.data["is_published"])
+
+    @override_settings(REVERT_ARTICLES_STATUS=False)
+    def test_update_keeps_status_when_flag_false(self):
+        auth(self.client, self.alice)
+        r = self.client.patch(self.url, {"title": "Changed"})
+        self.assertTrue(r.data["is_published"])
+
+    @override_settings(REVERT_ARTICLES_STATUS=True)
+    def test_update_user_value_beats_flip(self):
+        auth(self.client, self.alice)
+        r = self.client.patch(self.url, {"is_published": True}, format="json")
+        self.assertTrue(r.data["is_published"])
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")
