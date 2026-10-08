@@ -16,9 +16,10 @@ class Article(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_published = models.BooleanField(default=False)
+    position = models.PositiveIntegerField(null=True, blank=True)
 
     class Meta:
-        ordering = ["-created_at"]
+             ordering = ["position", "-created_at"]
 
     def __str__(self):
         return self.title
