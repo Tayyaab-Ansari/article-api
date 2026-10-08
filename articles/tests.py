@@ -234,6 +234,58 @@ class ArticleCRUDTests(APITestCase):
         self.assertEqual(r.status_code, 204)
         self.article.refresh_from_db()
         self.assertEqual(self.article.position, 1)
+    def _make_published(self, n):
+        arts = []
+        for i in range(n):
+            arts.append(Article.objects.create(
+                title=f"A{i}", description="x", author=self.alice, is_published=True
+            ))
+        return arts
+
+    def test_move_down_slides_window(self):
+        # Order ab (top se): A2=1, A1=2, A0=3, First=4
+        a0, a1, a2 = self._make_published(3)
+        auth(self.client, self.bob)
+        r = self.client.post(f"/articles/{a2.id}/move/", {"position": 3}, format="json")
+        self.assertEqual(r.status_code, 200)
+        for a in (a0, a1, a2, self.article):
+            a.refresh_from_db()
+        self.assertEqual(
+            [a2.position, a1.position, a0.position, self.article.position],
+            [3, 1, 2, 4],
+        )
+
+    def test_move_up_slides_window(self):
+        a0, a1, a2 = self._make_published(3)
+        auth(self.client, self.bob)
+        r = self.client.post(f"/articles/{self.article.id}/move/", {"position": 2}, format="json")
+        self.assertEqual(r.status_code, 200)
+        for a in (a0, a1, a2, self.article):
+            a.refresh_from_db()
+        self.assertEqual(
+            [a2.position, self.article.position, a1.position, a0.position],
+            [1, 2, 3, 4],
+        )
+
+    def test_move_requires_token(self):
+        r = self.client.post(f"/articles/{self.article.id}/move/", {"position": 1}, format="json")
+        self.assertEqual(r.status_code, 401)
+
+    def test_move_out_of_range(self):
+        auth(self.client, self.bob)
+        r = self.client.post(f"/articles/{self.article.id}/move/", {"position": 99}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_move_draft_rejected(self):
+        draft = Article.objects.create(title="D", description="x", author=self.alice, is_published=False)
+        auth(self.client, self.alice)
+        r = self.client.post(f"/articles/{draft.id}/move/", {"position": 1}, format="json")
+        self.assertEqual(r.status_code, 400)
+
+    def test_move_works_on_others_article(self):
+        auth(self.client, self.bob)
+        r = self.client.post(f"/articles/{self.article.id}/move/", {"position": 1}, format="json")
+        self.assertEqual(r.status_code, 200)
 
 class ArticleSearchTests(APITestCase):
     def setUp(self):

@@ -1,5 +1,5 @@
 from django.db.models import Q
-from drf_spectacular.utils import OpenApiParameter, extend_schema
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
 
@@ -9,6 +9,9 @@ from .serializers import ArticleSerializer
 from rest_framework.response import Response
 from .search import DEFAULT_MODE, SEARCH_MODES
 from django.conf import settings
+from django.db import transaction
+from django.db.models import F
+from rest_framework import serializers as drf_serializers
 
 class ArticleViewSet(
     mixins.ListModelMixin,
@@ -80,4 +83,55 @@ class ArticleViewSet(
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page, many=True)
         return self.get_paginated_response(serializer.data)
-    
+    @extend_schema(
+        request=inline_serializer(
+            name="MoveArticle",
+            fields={"position": drf_serializers.IntegerField(min_value=1)},
+        ),
+        responses=ArticleSerializer,
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="move",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def move(self, request, pk=None):
+        new_pos = request.data.get("position")
+        try:
+            new_pos = int(new_pos)
+        except (TypeError, ValueError):
+            return Response({"position": ["A whole number is required."]}, status=400)
+
+        with transaction.atomic():
+            published = Article.objects.select_for_update().filter(is_published=True)
+            total = published.count()
+            article = self.get_object()
+            article = Article.objects.select_for_update().get(pk=article.pk)
+
+            if not article.is_published or article.position is None:
+                return Response(
+                    {"detail": "Draft articles cannot be moved."}, status=400
+                )
+            if new_pos < 1 or new_pos > total:
+                return Response(
+                    {"position": [f"Must be between 1 and {total}."]}, status=400
+                )
+
+            old_pos = article.position
+            if new_pos != old_pos:
+                if new_pos > old_pos:
+                    # neeche le jao: beech wale ek upar (-1)
+                    published.filter(
+                        position__gt=old_pos, position__lte=new_pos
+                    ).update(position=F("position") - 1)
+                else:
+                    # upar le jao: beech wale ek neeche (+1)
+                    published.filter(
+                        position__gte=new_pos, position__lt=old_pos
+                    ).update(position=F("position") + 1)
+                # queryset.update se pre_save signal nahi chalta (jaan boojh kar)
+                Article.objects.filter(pk=article.pk).update(position=new_pos)
+
+        article.refresh_from_db()
+        return Response(self.get_serializer(article).data)
