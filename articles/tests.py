@@ -167,6 +167,64 @@ class ArticleCRUDTests(APITestCase):
         self.assertEqual(r.status_code, 204)
         self.assertEqual(calls, [None])
         self.assertFalse(Article.objects.filter(pk=self.article.id).exists())
+    def _positions(self):
+        return {
+            a.title: a.position
+            for a in Article.objects.filter(is_published=True)
+        }
+
+    def test_new_published_article_goes_to_top(self):
+        auth(self.client, self.bob)
+        r = self.client.post(
+            "/articles/", {**self.payload, "is_published": True}, format="json"
+        )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(Article.objects.get(pk=r.data["id"]).position, 1)
+
+    def test_new_draft_has_no_position(self):
+        auth(self.client, self.bob)
+        r = self.client.post(
+            "/articles/", {**self.payload, "is_published": False}, format="json"
+        )
+        self.assertIsNone(Article.objects.get(pk=r.data["id"]).position)
+
+    def test_new_article_pushes_others_down(self):
+        auth(self.client, self.bob)
+        r = self.client.post(
+            "/articles/", {**self.payload, "is_published": True}, format="json"
+        )
+        self.article.refresh_from_db()
+        self.assertEqual(self.article.position, 2)
+
+    def test_publishing_draft_moves_it_to_top(self):
+        draft = Article.objects.create(
+            title="D", description="x", author=self.alice, is_published=False
+        )
+        auth(self.client, self.alice)
+        self.client.patch(f"/articles/{draft.id}/", {"is_published": True}, format="json")
+        draft.refresh_from_db()
+        self.assertEqual(draft.position, 1)
+
+    def test_unpublishing_closes_gap(self):
+        second = Article.objects.create(
+            title="Second", description="x", author=self.alice, is_published=True
+        )
+        auth(self.client, self.alice)
+        self.client.patch(f"/articles/{second.id}/", {"is_published": False}, format="json")
+        second.refresh_from_db()
+        self.article.refresh_from_db()
+        self.assertIsNone(second.position)
+        self.assertEqual(self.article.position, 1)
+
+    def test_delete_closes_gap(self):
+        second = Article.objects.create(
+            title="Second", description="x", author=self.alice, is_published=True
+        )
+        auth(self.client, self.alice)
+        self.client.delete(self.url)
+        second.refresh_from_db()
+        self.assertEqual(second.position, 1)
+        
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")
