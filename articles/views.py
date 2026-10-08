@@ -44,6 +44,11 @@ class ArticleViewSet(
             serializer.save(is_published=not serializer.instance.is_published)
         else:
             serializer.save()
+    def perform_destroy(self, instance):
+        # Pehle author clear karo, phir delete
+        instance.author = None
+        instance.save(update_fields=["author"])
+        instance.delete()
     @extend_schema(
         parameters=[
             OpenApiParameter(

@@ -151,6 +151,22 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.alice)
         r = self.client.patch(self.url, {"is_published": True}, format="json")
         self.assertTrue(r.data["is_published"])
+    def test_delete_clears_author_before_deleting(self):
+        from unittest.mock import patch
+
+        auth(self.client, self.alice)
+        calls = []
+        original_save = Article.save
+
+        def spy_save(instance, *args, **kwargs):
+            calls.append(instance.author)
+            return original_save(instance, *args, **kwargs)
+
+        with patch.object(Article, "save", spy_save):
+            r = self.client.delete(self.url)
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(calls, [None])
+        self.assertFalse(Article.objects.filter(pk=self.article.id).exists())
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")
