@@ -4,7 +4,7 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Article
-
+from django.test import override_settings
 User = get_user_model()
 
 
@@ -108,6 +108,24 @@ class ArticleCRUDTests(APITestCase):
         draft = Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
         auth(self.client, self.alice)
         self.assertEqual(self.client.get(f"/articles/{draft.id}/").status_code, 404)
+    @override_settings(AUTO_PUBLISH_ARTICLES=True)
+    def test_create_uses_env_default_true(self):
+        auth(self.client, self.bob)
+        r = self.client.post("/articles/", self.payload)
+        self.assertEqual(r.status_code, 201)
+        self.assertTrue(r.data["is_published"])
+
+    @override_settings(AUTO_PUBLISH_ARTICLES=False)
+    def test_create_uses_env_default_false(self):
+        auth(self.client, self.bob)
+        r = self.client.post("/articles/", self.payload)
+        self.assertFalse(r.data["is_published"])
+
+    @override_settings(AUTO_PUBLISH_ARTICLES=False)
+    def test_create_user_value_beats_env(self):
+        auth(self.client, self.bob)
+        r = self.client.post("/articles/", {**self.payload, "is_published": True}, format="json")
+        self.assertTrue(r.data["is_published"])
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")

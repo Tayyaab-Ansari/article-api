@@ -8,7 +8,7 @@ from .permissions import IsAuthorOrReadOnly
 from .serializers import ArticleSerializer
 from rest_framework.response import Response
 from .search import DEFAULT_MODE, SEARCH_MODES
-
+from django.conf import settings
 
 class ArticleViewSet(
     mixins.ListModelMixin,
@@ -28,7 +28,14 @@ class ArticleViewSet(
         return qs.filter(Q(is_published=True) | Q(author=self.request.user))
 
     def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+        # User ne is_published nahi bheja to .env ka default lagao
+        if "is_published" in self.request.data:
+            serializer.save(author=self.request.user)
+        else:
+            serializer.save(
+                author=self.request.user,
+                is_published=settings.AUTO_PUBLISH_ARTICLES,
+            )
 
     @extend_schema(
         parameters=[
