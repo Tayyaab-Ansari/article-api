@@ -74,10 +74,6 @@
 {% block scripts %}
 <script>
   (function () {
-    if (!getAccess()) {
-      window.location = "/login/";
-      return;
-    }
 
     const PAGE_SIZE = 10;
     const params = new URLSearchParams(location.search);
@@ -86,6 +82,7 @@
     let page = parseInt(params.get("page"), 10) || 1;
     let requestId = 0; // purane jawab naye jawab ko na bigarein
     let me = null;
+    const loggedIn = !!getAccess();
     let dragged = null; // jo article abhi drag ho raha hai
 
     const $ = (id) => document.getElementById(id);
@@ -150,7 +147,7 @@
       const el = document.createElement("article");
       el.className = "entry";
       el.dataset.id = a.id;
-      if (a.position != null && !query) {
+      if (loggedIn && a.position != null && !query) {
         el.draggable = true;
         el.dataset.position = a.position;
         el.addEventListener("dragstart", (e) => {
@@ -266,7 +263,7 @@
       const spacer = document.createElement("span");
       spacer.className = "spacer";
       actions.appendChild(spacer);
-      if (a.position != null && !query) {
+      if (loggedIn && a.position != null && !query) {
         const up = document.createElement("button");
         up.type = "button";
         up.className = "btn-text";
@@ -444,13 +441,11 @@
     });
     $("prev").addEventListener("click", () => go(page - 1));
     $("next").addEventListener("click", () => go(page + 1));
+     (loggedIn ? getMe().catch(() => null) : Promise.resolve(null)).then((m) => {
+      me = m;
+      load();
+    });
 
-    getMe()
-      .catch(() => null)
-      .then((m) => {
-        me = m;
-        load();
-      });
   })();
 </script>
 {% endblock %}

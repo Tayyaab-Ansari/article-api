@@ -23,9 +23,14 @@ class ArticleCRUDTests(APITestCase):
         self.payload = {"title": "New", "subtitle": "S", "description": "D"}
         self.url = f"/articles/{self.article.id}/"
 
-    def test_list_requires_token(self):
+
+    def test_list_is_public_and_hides_drafts(self):
+        Article.objects.create(title="Hidden", description="x", author=self.bob, is_published=False)
         r = self.client.get("/articles/")
-        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1)
+
+    
 
     def test_list_with_token(self):
         auth(self.client, self.bob)
@@ -321,10 +326,7 @@ class ArticleSearchTests(APITestCase):
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 0)
 
-    def test_search_requires_token(self):
-        self.client.credentials()
-        r = self.client.get("/articles/search/?q=docker")
-        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
     def test_search_default_mode_is_contains(self):
         r = self.client.get("/articles/search/?q=docker")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
@@ -395,3 +397,9 @@ class ArticleSearchTests(APITestCase):
         )
         r = self.client.get("/articles/search/?q=secret&mode=fuzzy")
         self.assertEqual(r.data["count"], 0)
+
+    def test_search_is_public(self):
+        self.client.credentials()
+        r = self.client.get("/articles/search/?q=docker")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["count"], 1) 

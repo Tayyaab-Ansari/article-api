@@ -20,10 +20,11 @@ async function apiFetch(url, options = {}) {
   const headers = {
     "Content-Type": "application/json",
     ...(options.headers || {}),
-    Authorization: "Bearer " + getAccess(),
   };
+  const token = getAccess();
+  if (token) headers.Authorization = "Bearer " + token;
   const res = await fetch(url, { ...options, headers });
-  if (res.status === 401) {
+  if (res.status === 401 && token) {
     clearTokens();
     flash("Your session ended. Log in again.", "error");
     window.location = "/login/";

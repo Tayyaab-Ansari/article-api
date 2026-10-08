@@ -23,12 +23,19 @@ class ArticleViewSet(
 ):
     serializer_class = ArticleSerializer
     permission_classes = [permissions.IsAuthenticated, IsAuthorOrReadOnly]
-
+    def get_permissions(self):
+        if self.action in ("list", "search"):
+            return [permissions.AllowAny()]
+        return super().get_permissions()
+    
     def get_queryset(self):
         qs = Article.objects.select_related("author")
         if getattr(self, "swagger_fake_view", False):
             return qs.none()
-        return qs.filter(Q(is_published=True) | Q(author=self.request.user))
+        user = self.request.user
+        if user.is_authenticated:
+            return qs.filter(Q(is_published=True) | Q(author=user))
+        return qs.filter(is_published=True)
 
     def perform_create(self, serializer):
         if "is_published" in self.request.data:
