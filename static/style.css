@@ -325,3 +325,13 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
 @media (prefers-color-scheme: dark) {
   .badge-pos { background: #1f3a2d; color: #5dbb8d; }
 }
+.entry[draggable="true"] { cursor: grab; }
+.entry.dragging { opacity: 0.4; }
+.entry.drop-target {
+  outline: 2px dashed #0c4b33;
+  outline-offset: -2px;
+  background: #f1f8f4;
+}
+@media (prefers-color-scheme: dark) {
+  .entry.drop-target { outline-color: #5dbb8d; background: #1a2b22; }
+}
