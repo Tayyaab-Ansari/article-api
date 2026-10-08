@@ -35,6 +35,11 @@ class ArticleViewSet(
                 author=self.request.user,
                 is_published=settings.AUTO_PUBLISH_ARTICLES,
             )
+    def perform_update(self, serializer):
+        if "is_published" in self.request.data:
+            serializer.instance._user_set_published = True
+        serializer.save()
+
     def perform_destroy(self, instance):
         instance.author = None
         instance.save(update_fields=["author"])
