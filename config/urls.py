@@ -19,6 +19,7 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from django.contrib.auth.decorators import user_passes_test
+from django.conf import settings
 
 superuser_required = user_passes_test(
     lambda u: u.is_active and u.is_superuser,
@@ -41,3 +42,5 @@ urlpatterns = [
         name="swagger-ui",
     ),
 ]
+if settings.DEBUG:
+    urlpatterns += [path("__debug__/", include("debug_toolbar.urls"))]
