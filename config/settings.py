@@ -176,3 +176,5 @@ REVERT_ARTICLES_STATUS = config("REVERT_ARTICLES_STATUS", default=False, cast=bo
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
 CELERY_TASK_TRACK_STARTED = True
+OPENROUTER_API_KEY = config("OPENROUTER_API_KEY", default="")
+OPENROUTER_MODEL = config("OPENROUTER_MODEL", default="meta-llama/llama-3.2-3b-instruct:free")
