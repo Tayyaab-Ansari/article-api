@@ -16,6 +16,13 @@ class Article(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     is_published = models.BooleanField(default=False)
     position = models.PositiveIntegerField(null=True, blank=True)
+    ai_summary = models.TextField(blank=True, null=True)
+    summary_status = models.CharField(
+        max_length=10,
+        choices=[("none", "None"), ("pending", "Pending"), ("done", "Done"), ("failed", "Failed")],
+        default="none",
+    )
+    summary_requested_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
              ordering = ["position", "-created_at"]
