@@ -11,7 +11,7 @@ class Article(models.Model):
         related_name="articles",
         null=True,
         blank=True,
-    )
+    )               
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_published = models.BooleanField(default=False)
@@ -23,11 +23,9 @@ class Article(models.Model):
     def __str__(self):
         return self.title
     def apply_revert_status(self):
-        """REVERT_ARTICLES_STATUS True ho to is_published ulta karo."""
         if settings.REVERT_ARTICLES_STATUS:
             self.is_published = not self.is_published
     def place_at_top(self):
-        """Published article ko position 1 par rakho, baaqi published sab +1."""
         with transaction.atomic():
             Article.objects.filter(is_published=True, position__isnull=False).exclude(
                 pk=self.pk
@@ -35,9 +33,23 @@ class Article(models.Model):
             self.position = 1
 
     def close_gap(self):
-        """Is article ke neeche wale published articles ko -1 karo (gap band)."""
         if self.position is not None:
             Article.objects.filter(
                 is_published=True, position__gt=self.position
             ).update(position=F("position") - 1)
             self.position = None
+    def move_to(self, new_pos):
+        old_pos = self.position
+        if new_pos == old_pos:
+            return
+        with transaction.atomic():
+            published = Article.objects.filter(is_published=True)
+            if new_pos > old_pos:
+                published.filter(
+                    position__gt=old_pos, position__lte=new_pos
+                ).update(position=F("position") - 1)
+            else:
+                published.filter(
+                    position__gte=new_pos, position__lt=old_pos
+                ).update(position=F("position") + 1)
+            Article.objects.filter(pk=self.pk).update(position=new_pos)

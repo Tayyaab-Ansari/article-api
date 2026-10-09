@@ -109,7 +109,6 @@ class ArticleViewSet(
             new_pos = int(new_pos)
         except (TypeError, ValueError):
             return Response({"position": ["A whole number is required."]}, status=400)
-
         with transaction.atomic():
             published = Article.objects.select_for_update().filter(is_published=True)
             total = published.count()
@@ -125,20 +124,7 @@ class ArticleViewSet(
                     {"position": [f"Must be between 1 and {total}."]}, status=400
                 )
 
-            old_pos = article.position
-            if new_pos != old_pos:
-                if new_pos > old_pos:
-                    # neeche le jao: beech wale ek upar (-1)
-                    published.filter(
-                        position__gt=old_pos, position__lte=new_pos
-                    ).update(position=F("position") - 1)
-                else:
-                    # upar le jao: beech wale ek neeche (+1)
-                    published.filter(
-                        position__gte=new_pos, position__lt=old_pos
-                    ).update(position=F("position") + 1)
-                # queryset.update se pre_save signal nahi chalta (jaan boojh kar)
-                Article.objects.filter(pk=article.pk).update(position=new_pos)
+            article.move_to(new_pos)
 
         article.refresh_from_db()
         return Response(self.get_serializer(article).data)
