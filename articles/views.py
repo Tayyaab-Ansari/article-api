@@ -12,6 +12,9 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from rest_framework import serializers as drf_serializers
+from datetime import timedelta
+from django.utils import timezone
+from .tasks import generate_ai_summary
 
 class ArticleViewSet(
     mixins.ListModelMixin,
@@ -128,3 +131,34 @@ class ArticleViewSet(
 
         article.refresh_from_db()
         return Response(self.get_serializer(article).data)
+    @extend_schema(request=None, responses={202: ArticleSerializer})
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="ai-summary",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def ai_summary(self, request, pk=None):
+        article = self.get_object()
+
+        if not article.is_published:
+            return Response(
+                {"detail": "Draft articles cannot be summarized."}, status=400
+            )
+
+        stale = timezone.now() - timedelta(minutes=10)
+        already_pending = (
+            article.summary_status == "pending"
+            and article.summary_requested_at is not None
+            and article.summary_requested_at > stale
+        )
+        if already_pending:
+            return Response(self.get_serializer(article).data, status=202)
+
+        Article.objects.filter(pk=article.pk).update(
+            summary_status="pending", summary_requested_at=timezone.now()
+        )
+        transaction.on_commit(lambda: generate_ai_summary.delay(article.pk))
+
+        article.refresh_from_db()
+        return Response(self.get_serializer(article).data, status=202)
