@@ -5,6 +5,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Article
 from django.test import override_settings
+from unittest.mock import patch
 User = get_user_model()
 
 
@@ -291,6 +292,34 @@ class ArticleCRUDTests(APITestCase):
         auth(self.client, self.bob)
         r = self.client.post(f"/articles/{self.article.id}/move/", {"position": 1}, format="json")
         self.assertEqual(r.status_code, 200)
+    @patch("articles.views.generate_ai_summary")
+    def test_ai_summary_queues_task(self, mock_task):
+        auth(self.client, self.bob)
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self.client.post(f"/articles/{self.article.id}/ai-summary/")
+        self.assertEqual(r.status_code, 202)
+        self.assertEqual(r.data["summary_status"], "pending")
+        mock_task.delay.assert_called_once_with(self.article.id)
+
+    @patch("articles.views.generate_ai_summary")
+    def test_ai_summary_not_requeued_while_pending(self, mock_task):
+        auth(self.client, self.bob)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(f"/articles/{self.article.id}/ai-summary/")
+            self.client.post(f"/articles/{self.article.id}/ai-summary/")
+        self.assertEqual(mock_task.delay.call_count, 1)
+
+    def test_ai_summary_rejects_draft(self):
+        draft = Article.objects.create(
+            title="D", description="x", author=self.alice, is_published=False
+        )
+        auth(self.client, self.alice)
+        r = self.client.post(f"/articles/{draft.id}/ai-summary/")
+        self.assertEqual(r.status_code, 400)
+
+    def test_ai_summary_requires_token(self):
+        r = self.client.post(f"/articles/{self.article.id}/ai-summary/")
+        self.assertEqual(r.status_code, 401)
 
 class ArticleSearchTests(APITestCase):
     def setUp(self):
