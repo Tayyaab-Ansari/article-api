@@ -345,5 +345,13 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
   line-height: 1.5;
 }
 @media (prefers-color-scheme: dark) {
-  .ai-summary { background: #1a2b22; border-left-color: #5dbb8d; }
+.ai-summary {
+  margin: 12px 0 18px;
+  padding: 10px 14px;
+  border-left: 3px solid #0c4b33;
+  background: #f1f8f4;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
 }
