@@ -218,7 +218,20 @@
       time.textContent = formatDate(a.created_at);
       meta.appendChild(time);
       el.appendChild(meta);
-
+      // AI summary ka box (agar pehle se maujood ho)
+      const sumBox = document.createElement("div");
+      sumBox.className = "ai-summary";
+      sumBox.hidden = !(a.ai_summary && a.summary_status === "done");
+      function fillSummary(text) {
+        sumBox.replaceChildren();
+        const label = document.createElement("strong");
+        label.textContent = "AI summary: ";
+        sumBox.appendChild(label);
+        sumBox.appendChild(document.createTextNode(text));
+        sumBox.hidden = false;
+      }
+      if (!sumBox.hidden) fillSummary(a.ai_summary);
+      el.appendChild(sumBox);
       const prose = document.createElement("div");
       prose.className = "prose";
       const paras = paragraphs(a.description);
@@ -259,7 +272,19 @@
         };
         actions.appendChild(more);
       }
-
+      let sumBtn = null;
+      if (loggedIn && a.is_published !== false) {
+        sumBtn = document.createElement("button");
+        sumBtn.type = "button";
+        sumBtn.className = "btn-text";
+        sumBtn.textContent = a.ai_summary ? "Regenerate summary" : "AI summary";
+        sumBtn.onclick = () => requestSummary(a, sumBtn, fillSummary);
+        actions.appendChild(sumBtn);
+        // Page load par pehle se pending ho to poll dobara shuru
+        if (a.summary_status === "pending") {
+          pollSummary(a, sumBtn, fillSummary);
+        }
+      }
       const spacer = document.createElement("span");
       spacer.className = "spacer";
       actions.appendChild(spacer);
@@ -296,6 +321,54 @@
       }
       el.appendChild(actions);
       return el;
+    }
+    async function requestSummary(a, btn, fill) {
+      btn.disabled = true;
+      btn.textContent = "Generating...";
+      const res = await apiFetch("/articles/" + a.id + "/ai-summary/", {
+        method: "POST",
+      });
+      if (res.status === 202) {
+        pollSummary(a, btn, fill);
+      } else {
+        btn.disabled = false;
+        btn.textContent = "AI summary";
+        if (res.status === 400) toast("Draft articles cannot be summarized.", "error");
+        else if (res.status !== 401) toast("Could not start summary.", "error");
+      }
+    }
+
+    function pollSummary(a, btn, fill) {
+      btn.disabled = true;
+      btn.textContent = "Generating...";
+      let tries = 0;
+      const timer = setInterval(async () => {
+        tries += 1;
+        if (!document.body.contains(btn) || tries > 20) {
+          clearInterval(timer);
+          if (document.body.contains(btn)) {
+            btn.disabled = false;
+            btn.textContent = "AI summary";
+            toast("Summary is taking too long. Try again later.", "error");
+          }
+          return;
+        }
+        const res = await apiFetch("/articles/" + a.id + "/");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.summary_status === "done") {
+          clearInterval(timer);
+          fill(data.ai_summary);
+          btn.disabled = false;
+          btn.textContent = "Regenerate summary";
+          toast("Summary ready.");
+        } else if (data.summary_status === "failed") {
+          clearInterval(timer);
+          btn.disabled = false;
+          btn.textContent = "AI summary";
+          toast("Summary failed. Try again.", "error");
+        }
+      }, 3000);
     }
     async function moveArticle(a, newPos) {
       const res = await apiFetch("/articles/" + a.id + "/move/", {

@@ -41,13 +41,20 @@ def generate_ai_summary(self, article_id):
             ai_summary=summary, summary_status="done"
         )
         return "done"
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 429:
+            # Rate limit: retry se quota aur khatam hota hai, foran failed
+            Article.objects.filter(pk=article_id).update(summary_status="failed")
+            return "rate limited"
+        if self.request.retries >= self.max_retries:
+            Article.objects.filter(pk=article_id).update(summary_status="failed")
+            return f"failed: {exc}"
+        raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
     except Exception as exc:
         if self.request.retries >= self.max_retries:
             Article.objects.filter(pk=article_id).update(summary_status="failed")
-            raise
+            return f"failed: {exc}"
         raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
-
-
 @shared_task
 def hello(name):
     return f"Hello {name}"
