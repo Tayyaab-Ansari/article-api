@@ -172,3 +172,7 @@ INTERNAL_IPS = ["127.0.0.1"]
 # Articles behaviour flags (.env se)
 AUTO_PUBLISH_ARTICLES = config("AUTO_PUBLISH_ARTICLES", default=False, cast=bool)
 REVERT_ARTICLES_STATUS = config("REVERT_ARTICLES_STATUS", default=False, cast=bool)
+
+CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
+CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localhost:6379/0")
+CELERY_TASK_TRACK_STARTED = True
