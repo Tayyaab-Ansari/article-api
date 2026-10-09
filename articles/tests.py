@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from .models import Article
 from django.test import override_settings
 from unittest.mock import patch
+from django.utils import timezone
 User = get_user_model()
 
 
@@ -319,6 +320,55 @@ class ArticleCRUDTests(APITestCase):
 
     def test_ai_summary_requires_token(self):
         r = self.client.post(f"/articles/{self.article.id}/ai-summary/")
+        self.assertEqual(r.status_code, 401)
+    def test_edit_summary_by_any_logged_in_user(self):
+        auth(self.client, self.bob)
+        r = self.client.patch(
+            f"/articles/{self.article.id}/summary/",
+            {"ai_summary": "My own summary"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["ai_summary"], "My own summary")
+        self.assertEqual(r.data["summary_status"], "done")
+
+    def test_edit_summary_rejects_empty(self):
+        auth(self.client, self.bob)
+        r = self.client.patch(
+            f"/articles/{self.article.id}/summary/",
+            {"ai_summary": "   "},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_edit_summary_rejects_draft(self):
+        draft = Article.objects.create(
+            title="D", description="x", author=self.alice, is_published=False
+        )
+        auth(self.client, self.alice)
+        r = self.client.patch(
+            f"/articles/{draft.id}/summary/", {"ai_summary": "x"}, format="json"
+        )
+        self.assertEqual(r.status_code, 400)
+
+    def test_edit_summary_blocked_while_pending(self):
+        Article.objects.filter(pk=self.article.id).update(
+            summary_status="pending", summary_requested_at=timezone.now()
+        )
+        auth(self.client, self.bob)
+        r = self.client.patch(
+            f"/articles/{self.article.id}/summary/",
+            {"ai_summary": "x"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 409)
+
+    def test_edit_summary_requires_token(self):
+        r = self.client.patch(
+            f"/articles/{self.article.id}/summary/",
+            {"ai_summary": "x"},
+            format="json",
+        )
         self.assertEqual(r.status_code, 401)
 
 class ArticleSearchTests(APITestCase):

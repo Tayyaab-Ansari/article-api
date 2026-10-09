@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models, transaction
 from django.db.models import F
+from datetime import timedelta
+from django.utils import timezone
 class Article(models.Model):
     title = models.CharField(max_length=255)
     subtitle = models.CharField(max_length=255, blank=True)
@@ -60,3 +62,8 @@ class Article(models.Model):
                     position__gte=new_pos, position__lt=old_pos
                 ).update(position=F("position") + 1)
             Article.objects.filter(pk=self.pk).update(position=new_pos)
+    def is_summary_pending(self):
+        """Summary pending hai aur 10 minute se purani nahi (warna atka hua maanenge)."""
+        if self.summary_status != "pending" or self.summary_requested_at is None:
+            return False
+        return self.summary_requested_at > timezone.now() - timedelta(minutes=10)

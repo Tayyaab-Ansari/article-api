@@ -12,10 +12,9 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from rest_framework import serializers as drf_serializers
-from datetime import timedelta
 from django.utils import timezone
 from .tasks import generate_ai_summary
-
+from .serializers import ArticleSerializer, SummaryEditSerializer
 class ArticleViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
@@ -146,13 +145,7 @@ class ArticleViewSet(
                 {"detail": "Draft articles cannot be summarized."}, status=400
             )
 
-        stale = timezone.now() - timedelta(minutes=10)
-        already_pending = (
-            article.summary_status == "pending"
-            and article.summary_requested_at is not None
-            and article.summary_requested_at > stale
-        )
-        if already_pending:
+        if article.is_summary_pending():
             return Response(self.get_serializer(article).data, status=202)
 
         Article.objects.filter(pk=article.pk).update(
@@ -162,3 +155,32 @@ class ArticleViewSet(
 
         article.refresh_from_db()
         return Response(self.get_serializer(article).data, status=202)
+    @extend_schema(request=SummaryEditSerializer, responses=ArticleSerializer)
+    @action(
+        detail=True,
+        methods=["patch"],
+        url_path="summary",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def edit_summary(self, request, pk=None):
+        article = self.get_object()
+
+        if not article.is_published:
+            return Response(
+                {"detail": "Draft articles have no summary."}, status=400
+            )
+        if article.is_summary_pending():
+            return Response(
+                {"detail": "Summary is being generated. Try again shortly."},
+                status=409,
+            )
+
+        serializer = SummaryEditSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        Article.objects.filter(pk=article.pk).update(
+            ai_summary=serializer.validated_data["ai_summary"],
+            summary_status="done",
+        )
+        article.refresh_from_db()
+        return Response(self.get_serializer(article).data)

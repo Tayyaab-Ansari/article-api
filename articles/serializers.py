@@ -19,3 +19,5 @@ class ArticleSerializer(serializers.ModelSerializer):
             "ai_summary", "summary_status", "summary_requested_at",
             "created_at", "updated_at",
         ]
+class SummaryEditSerializer(serializers.Serializer):
+    ai_summary = serializers.CharField(max_length=2000)
