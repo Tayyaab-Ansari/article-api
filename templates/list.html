@@ -222,13 +222,68 @@
       const sumBox = document.createElement("div");
       sumBox.className = "ai-summary";
       sumBox.hidden = !(a.ai_summary && a.summary_status === "done");
+      let currentSummary = "";
+      let editBtn = null;
       function fillSummary(text) {
+        currentSummary = text;
         sumBox.replaceChildren();
         const label = document.createElement("strong");
-        label.textContent = "AI summary: ";
+        label.textContent = "Summary: ";
         sumBox.appendChild(label);
         sumBox.appendChild(document.createTextNode(text));
         sumBox.hidden = false;
+        if (editBtn) editBtn.hidden = false;
+      }
+      function startEdit() {
+        const area = document.createElement("textarea");
+        area.className = "field-input summary-edit";
+        area.rows = 4;
+        area.maxLength = 2000;
+        area.value = currentSummary;
+
+        const row = document.createElement("div");
+        row.className = "summary-edit-actions";
+        const save = document.createElement("button");
+        save.type = "button";
+        save.className = "btn btn-primary";
+        save.textContent = "Save";
+        const cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.className = "btn btn-ghost";
+        cancel.textContent = "Cancel";
+        row.append(save, cancel);
+
+        sumBox.replaceChildren(area, row);
+        editBtn.disabled = true;
+        area.focus();
+
+        cancel.onclick = () => {
+          fillSummary(currentSummary);
+          editBtn.disabled = false;
+        };
+        save.onclick = async () => {
+          const text = area.value.trim();
+          if (!text) {
+            toast("Summary cannot be empty.", "error");
+            return;
+          }
+          save.disabled = true;
+          const res = await apiFetch("/articles/" + a.id + "/summary/", {
+            method: "PATCH",
+            body: JSON.stringify({ ai_summary: text }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            fillSummary(data.ai_summary);
+            editBtn.disabled = false;
+            toast("Summary saved.");
+          } else {
+            save.disabled = false;
+            if (res.status === 409) toast("Summary is being generated. Try again shortly.", "error");
+            else if (res.status === 400) toast("Could not save: check the summary text.", "error");
+            else if (res.status !== 401) toast("Could not save summary.", "error");
+          }
+        };
       }
       if (!sumBox.hidden) fillSummary(a.ai_summary);
       el.appendChild(sumBox);
@@ -280,7 +335,13 @@
         sumBtn.textContent = a.ai_summary ? "Regenerate summary" : "AI summary";
         sumBtn.onclick = () => requestSummary(a, sumBtn, fillSummary);
         actions.appendChild(sumBtn);
-        // Page load par pehle se pending ho to poll dobara shuru
+        editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "btn-text";
+        editBtn.textContent = "Edit summary";
+        editBtn.hidden = !currentSummary;
+        editBtn.onclick = startEdit;
+        actions.appendChild(editBtn);
         if (a.summary_status === "pending") {
           pollSummary(a, sumBtn, fillSummary);
         }

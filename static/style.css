@@ -355,3 +355,13 @@ dialog .actions { display: flex; justify-content: flex-end; gap: 10px; }
   line-height: 1.5;
 }
 }
+.summary-edit {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+.summary-edit-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
