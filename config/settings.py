@@ -178,3 +178,9 @@ CELERY_RESULT_BACKEND = config("CELERY_RESULT_BACKEND", default="redis://localho
 CELERY_TASK_TRACK_STARTED = True
 OPENROUTER_API_KEY = config("OPENROUTER_API_KEY", default="")
 OPENROUTER_MODEL = config("OPENROUTER_MODEL", default="meta-llama/llama-3.2-3b-instruct:free")
+CELERY_BEAT_SCHEDULE = {
+    "count-summaries-every-minute": {
+        "task": "articles.tasks.count_summaries",
+        "schedule": 60.0,
+    },
+}
