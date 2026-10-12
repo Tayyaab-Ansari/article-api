@@ -183,3 +183,5 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+# Excel mein "=", "+", "-", "@" se shuru hone wale text ko formula banne se rokta hai
+IMPORT_EXPORT_ESCAPE_FORMULAE_ON_EXPORT = True

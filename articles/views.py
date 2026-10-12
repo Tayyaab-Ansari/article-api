@@ -13,7 +13,12 @@ from django.db.models import F
 from rest_framework import serializers as drf_serializers
 from django.utils import timezone
 from .tasks import generate_ai_summary
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from import_export.formats.base_formats import XLSX
+from .resources import ArticleExportResource
 from .serializers import ArticleSerializer, SummaryEditSerializer
+XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 class ArticleViewSet(
     mixins.ListModelMixin,
     mixins.CreateModelMixin,
@@ -153,6 +158,19 @@ class ArticleViewSet(
     )
     def edit_summary(self, request, pk=None):
         article = self.get_object()
+    @extend_schema(request=None, responses={200: OpenApiTypes.BINARY})
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="export",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def export(self, request):
+        dataset = ArticleExportResource().export()
+        content = XLSX().export_data(dataset)
+        response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
+        response["Content-Disposition"] = 'attachment; filename="articles.xlsx"'
+        return response
 
         if not article.is_published:
             return Response(

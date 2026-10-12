@@ -6,6 +6,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from .models import Article
 from unittest.mock import patch
 from django.utils import timezone
+import tablib
 User = get_user_model()
 
 
@@ -454,3 +455,50 @@ class ArticleSearchTests(APITestCase):
         r = self.client.get("/articles/search/?q=docker")
         self.assertEqual(r.status_code, status.HTTP_200_OK)
         self.assertEqual(r.data["count"], 1) 
+class ArticleExportTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        cls.bob = User.objects.create_user("bob", password="pass12345")
+        Article.objects.create(
+            title="Pub one", subtitle="s", description="d",
+            author=cls.alice, is_published=True,
+        )
+        Article.objects.create(
+            title="Pub two", description="d", author=cls.bob, is_published=True
+        )
+        Article.objects.create(
+            title="My draft", description="d", author=cls.alice, is_published=False
+        )
+
+    def _rows(self, response):
+        return tablib.Dataset().load(response.content, format="xlsx")
+
+    def test_export_requires_token(self):
+        r = self.client.get("/articles/export/")
+        self.assertEqual(r.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_export_returns_xlsx_download(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/articles/export/")
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertIn("spreadsheetml", r["Content-Type"])
+        self.assertIn("attachment", r["Content-Disposition"])
+
+    def test_export_has_only_published_articles(self):
+        auth(self.client, self.alice)
+        rows = self._rows(self.client.get("/articles/export/"))
+        self.assertEqual(
+            rows.headers, ["title", "subtitle", "description", "status", "author"]
+        )
+        self.assertEqual(sorted(rows["title"]), ["Pub one", "Pub two"])
+        self.assertEqual(set(rows["status"]), {"published"})
+        self.assertEqual(sorted(rows["author"]), ["alice", "bob"])
+
+    def test_export_escapes_formulas(self):
+        Article.objects.create(
+            title="=1+1", description="d", author=self.alice, is_published=True
+        )
+        auth(self.client, self.alice)
+        rows = self._rows(self.client.get("/articles/export/"))
+        self.assertFalse(any(t.startswith("=") for t in rows["title"]))
