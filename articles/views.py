@@ -158,19 +158,6 @@ class ArticleViewSet(
     )
     def edit_summary(self, request, pk=None):
         article = self.get_object()
-    @extend_schema(request=None, responses={200: OpenApiTypes.BINARY})
-    @action(
-        detail=False,
-        methods=["get"],
-        url_path="export",
-        permission_classes=[permissions.IsAuthenticated],
-    )
-    def export(self, request):
-        dataset = ArticleExportResource().export()
-        content = XLSX().export_data(dataset)
-        response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
-        response["Content-Disposition"] = 'attachment; filename="articles.xlsx"'
-        return response
 
         if not article.is_published:
             return Response(
@@ -191,3 +178,17 @@ class ArticleViewSet(
         )
         article.refresh_from_db()
         return Response(self.get_serializer(article).data)
+
+    @extend_schema(request=None, responses={200: OpenApiTypes.BINARY})
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="export",
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def export(self, request):
+        dataset = ArticleExportResource().export()
+        content = XLSX().export_data(dataset)
+        response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
+        response["Content-Disposition"] = 'attachment; filename="articles.xlsx"'
+        return response
