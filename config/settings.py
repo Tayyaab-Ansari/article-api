@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "django.contrib.postgres",
     "debug_toolbar",
+    "django_celery_beat",
 
 ]
 
@@ -122,6 +123,7 @@ LANGUAGE_CODE = 'en-us'
 
 TIME_ZONE = 'UTC'
 
+
 USE_I18N = True
 
 USE_TZ = True
@@ -184,3 +186,4 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": 60.0,
     },
 }
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
