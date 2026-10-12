@@ -8,11 +8,6 @@ def handle_article_save(sender, instance, **kwargs):
     old = None
     if instance.pk is not None:
         old = sender.objects.filter(pk=instance.pk).first()
-
-    if old is not None and not getattr(instance, "_user_set_published", False):
-        instance.is_published = old.is_published
-        instance.apply_revert_status()
-
     was_published = old.is_published if old is not None else False
     if instance.is_published and not was_published:
         instance.place_at_top()

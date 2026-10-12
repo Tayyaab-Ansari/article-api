@@ -8,7 +8,6 @@ from .permissions import IsAuthorOrReadOnly
 from .serializers import ArticleSerializer
 from rest_framework.response import Response
 from .search import DEFAULT_MODE, SEARCH_MODES
-from django.conf import settings
 from django.db import transaction
 from django.db.models import F
 from rest_framework import serializers as drf_serializers
@@ -40,18 +39,12 @@ class ArticleViewSet(
         return qs.filter(is_published=True)
 
     def perform_create(self, serializer):
-        if "is_published" in self.request.data:
-            serializer.save(author=self.request.user)
-        else:
-            serializer.save(
-                author=self.request.user,
-                is_published=settings.AUTO_PUBLISH_ARTICLES,
-            )
+        serializer.save(author=self.request.user)
+
     def perform_update(self, serializer):
         if "is_published" in self.request.data:
             serializer.instance._user_set_published = True
         serializer.save()
-
     def perform_destroy(self, instance):
         instance.author = None
         instance.save(update_fields=["author"])

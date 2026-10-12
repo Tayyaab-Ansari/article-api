@@ -31,9 +31,7 @@ class Article(models.Model):
 
     def __str__(self):
         return self.title
-    def apply_revert_status(self):
-        if settings.REVERT_ARTICLES_STATUS:
-            self.is_published = not self.is_published
+
     def place_at_top(self):
         with transaction.atomic():
             Article.objects.filter(is_published=True, position__isnull=False).exclude(
