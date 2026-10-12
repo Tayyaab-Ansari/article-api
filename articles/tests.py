@@ -4,7 +4,6 @@ from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
 from .models import Article
-from django.test import override_settings
 from unittest.mock import patch
 from django.utils import timezone
 User = get_user_model()
@@ -115,49 +114,31 @@ class ArticleCRUDTests(APITestCase):
         draft = Article.objects.create(title="Secret draft", description="x", author=self.bob, is_published=False)
         auth(self.client, self.alice)
         self.assertEqual(self.client.get(f"/articles/{draft.id}/").status_code, 404)
-    @override_settings(AUTO_PUBLISH_ARTICLES=True)
-    def test_create_uses_env_default_true(self):
-        auth(self.client, self.bob)
-        r = self.client.post("/articles/", self.payload)
-        self.assertEqual(r.status_code, 201)
-        self.assertTrue(r.data["is_published"])
 
-    @override_settings(AUTO_PUBLISH_ARTICLES=False)
-    def test_create_uses_env_default_false(self):
+
+    def test_create_defaults_to_draft(self):
         auth(self.client, self.bob)
         r = self.client.post("/articles/", self.payload)
         self.assertFalse(r.data["is_published"])
 
-    @override_settings(AUTO_PUBLISH_ARTICLES=False)
-    def test_create_user_value_beats_env(self):
+
+    def test_create_with_is_published_true(self):
         auth(self.client, self.bob)
         r = self.client.post("/articles/", {**self.payload, "is_published": True}, format="json")
         self.assertTrue(r.data["is_published"])
-    @override_settings(REVERT_ARTICLES_STATUS=True)
-    def test_update_flips_status_when_flag_true(self):
+
+
+    def test_update_without_is_published_keeps_status(self):
         auth(self.client, self.alice)
         r = self.client.patch(self.url, {"title": "Changed"})
+        self.assertTrue(r.data["is_published"])
+    def test_put_without_is_published_keeps_status(self):
+        auth(self.client, self.alice)
+        r = self.client.put(self.url, self.payload, format="json")
         self.assertEqual(r.status_code, 200)
-        self.assertFalse(r.data["is_published"])
-
-    @override_settings(REVERT_ARTICLES_STATUS=True)
-    def test_update_flips_back_on_second_update(self):
-        auth(self.client, self.alice)
-        self.client.patch(self.url, {"title": "One"})
-        r = self.client.patch(self.url, {"title": "Two"})
         self.assertTrue(r.data["is_published"])
 
-    @override_settings(REVERT_ARTICLES_STATUS=False)
-    def test_update_keeps_status_when_flag_false(self):
-        auth(self.client, self.alice)
-        r = self.client.patch(self.url, {"title": "Changed"})
-        self.assertTrue(r.data["is_published"])
-
-    @override_settings(REVERT_ARTICLES_STATUS=True)
-    def test_update_user_value_beats_flip(self):
-        auth(self.client, self.alice)
-        r = self.client.patch(self.url, {"is_published": True}, format="json")
-        self.assertTrue(r.data["is_published"])
+  
     def test_delete_clears_author_before_deleting(self):
         from unittest.mock import patch
 
@@ -231,16 +212,7 @@ class ArticleCRUDTests(APITestCase):
         self.client.delete(self.url)
         second.refresh_from_db()
         self.assertEqual(second.position, 1)
-    @override_settings(REVERT_ARTICLES_STATUS=True)
-    def test_delete_with_flag_still_closes_gap(self):
-        second = Article.objects.create(
-            title="Second", description="x", author=self.alice, is_published=True
-        )
-        auth(self.client, self.alice)
-        r = self.client.delete(f"/articles/{second.id}/")
-        self.assertEqual(r.status_code, 204)
-        self.article.refresh_from_db()
-        self.assertEqual(self.article.position, 1)
+
     def _make_published(self, n):
         arts = []
         for i in range(n):
