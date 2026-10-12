@@ -21,6 +21,7 @@ async function apiFetch(url, options = {}) {
     "Content-Type": "application/json",
     ...(options.headers || {}),
   };
+
   const token = getAccess();
   if (token) headers.Authorization = "Bearer " + token;
   const res = await fetch(url, { ...options, headers });
@@ -29,6 +30,25 @@ async function apiFetch(url, options = {}) {
     flash("Your session ended. Log in again.", "error");
     window.location = "/login/";
   }
+  return res;
+}
+/* ---------- File download (token ke saath fetch, phir browser ko save karne ko kaho) ---------- */
+async function downloadFile(url, fallbackName) {
+  const res = await apiFetch(url);
+  if (!res.ok) return res; // jo bulaye wo error dikhaye
+  const blob = await res.blob();
+  let name = fallbackName;
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  if (m) name = m[1];
+  const href = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = href;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(href), 1000);
   return res;
 }
 

@@ -7,6 +7,21 @@
     <h1>Articles</h1>
     <p class="page-sub" id="summary">Loading...</p>
   </div>
+  <div id="page-actions" hidden>
+    <button
+      type="button"
+      class="btn btn-ghost"
+      id="export-btn"
+      title="Download all published articles as an Excel file"
+    >
+      Export Excel
+    </button>
+  </div>
+</div>
+<div>
+    <h1>Articles</h1>
+    <p class="page-sub" id="summary">Loading...</p>
+  </div>
 </div>
 
 <form class="search" id="search-form" role="search">
@@ -575,6 +590,21 @@
     });
     $("prev").addEventListener("click", () => go(page - 1));
     $("next").addEventListener("click", () => go(page + 1));
+    /* Export: sirf login user ko button dikhao */
+    if (loggedIn) $("page-actions").hidden = false;
+    const exportBtn = $("export-btn");
+    exportBtn.addEventListener("click", async () => {
+      setBusy(exportBtn, true, "Preparing...");
+      try {
+        const res = await downloadFile("/articles/export/", "articles.xlsx");
+        if (res.ok) toast("Excel file downloaded.");
+        else if (res.status !== 401) toast("Could not export. Try again.", "error");
+      } catch (e) {
+        toast("Could not export. Check your connection.", "error");
+      } finally {
+        setBusy(exportBtn, false);
+      }
+    });
      (loggedIn ? getMe().catch(() => null) : Promise.resolve(null)).then((m) => {
       me = m;
       load();
