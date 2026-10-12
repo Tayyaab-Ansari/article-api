@@ -3,7 +3,9 @@ from celery import shared_task
 from .models import Article
 import httpx
 from django.conf import settings
+from celery.utils.log import get_task_logger
 
+logger = get_task_logger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def generate_ai_summary(self, article_id):
@@ -54,3 +56,18 @@ def generate_ai_summary(self, article_id):
             Article.objects.filter(pk=article_id).update(summary_status="failed")
             return f"failed: {exc}"
         raise self.retry(exc=exc, countdown=2 ** (self.request.retries + 1))
+@shared_task
+def count_summaries():
+    published = Article.objects.filter(is_published=True)
+    total = published.count()
+    with_summary = (
+        published.exclude(ai_summary__isnull=True).exclude(ai_summary="").count()
+    )
+    without_summary = total - with_summary
+    logger.info(
+        "Summaries: with=%s, without=%s, total published=%s",
+        with_summary,
+        without_summary,
+        total,
+    )
+    return f"with={with_summary}, without={without_summary}"
