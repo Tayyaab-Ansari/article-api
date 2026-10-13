@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+{% block title %}Import{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Import articles</h1>
+    <p class="page-sub">Upload an Excel file, check the preview, then confirm.</p>
+  </div>
+  <a class="btn btn-ghost" href="/">Back to articles</a>
+</div>
+
+<section id="step-upload" class="panel">
+  <form id="upload-form" novalidate>
+    <div class="alert" data-form-error hidden></div>
+    <div class="field">
+      <label for="file">Excel file (.xlsx)</label>
+      <input
+        class="field-input"
+        id="file"
+        name="file"
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      />
+      <p class="field-error" data-error-for="file" hidden></p>
+    </div>
+    <p class="hint-box">
+      The first row must have these columns:
+      <code>title</code>, <code>subtitle</code>, <code>description</code>, <code>status</code>.
+      Status is <code>published</code> or <code>draft</code> (empty means draft).
+      Up to 500 rows, 5 MB.
+    </p>
+    <button class="btn btn-primary" type="submit" id="preview-btn">Preview</button>
+  </form>
+</section>
+
+<section id="step-preview" hidden>
+  <div class="panel">
+    <h2 id="preview-title" tabindex="-1">Preview</h2>
+    <p class="page-sub" id="preview-file"></p>
+    <ul class="chips" id="chips"></ul>
+    <p class="hint-box">
+      Error rows are always skipped. A conflict row means you already have an article with
+      the same title; it is skipped unless you tick Update.
+    </p>
+    <label class="check" id="all-wrap" hidden>
+      <input type="checkbox" id="all-conflicts" />
+      <span>Update all conflicts</span>
+    </label>
+    <div class="table-wrap">
+      <table class="import-table">
+        <thead>
+          <tr>
+            <th scope="col">Row</th>
+            <th scope="col">Title</th>
+            <th scope="col">Status</th>
+            <th scope="col">Result</th>
+            <th scope="col">Update</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="editor-foot">
+      <button type="button" class="btn btn-ghost" id="restart-btn">Choose another file</button>
+      <button type="button" class="btn btn-primary" id="confirm-btn">Import</button>
+    </div>
+  </div>
+</section>
+
+<section id="step-progress" class="panel" hidden>
+  <h2 id="progress-title" tabindex="-1">Importing...</h2>
+  <p class="page-sub" id="progress-text" aria-live="polite"></p>
+  <ul class="chips" id="result-chips" hidden></ul>
+  <div class="alert" id="failure" hidden></div>
+  <div class="editor-foot">
+    <a class="btn btn-ghost" href="/">Back to articles</a>
+    <button type="button" class="btn btn-primary" id="again-btn" hidden>Import another file</button>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    if (!getAccess()) {
+      flash("Log in to import articles.", "error");
+      window.location = "/login/";
+      return;
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const STEPS = ["step-upload", "step-preview", "step-progress"];
+    const LABELS = { ready: "Ready", conflict: "Conflict", error: "Error" };
+    const state = { jobId: null, summary: null };
+    let pollId = 0;
+
+    function show(step) {
+      STEPS.forEach((id) => { $(id).hidden = id !== step; });
+    }
+
+    function chip(parent, label, value, kind) {
+      const li = document.createElement("li");
+      li.className = "chip" + (kind ? " chip-" + kind : "");
+      const strong = document.createElement("strong");
+      strong.textContent = String(value);
+      li.appendChild(strong);
+      li.appendChild(document.createTextNode(" " + label));
+      parent.appendChild(li);
+    }
+
+    function textCell(text, className) {
+      const td = document.createElement("td");
+      if (className) td.className = className;
+      td.textContent = text;
+      return td;
+    }
+
+    /* ----- Preview ----- */
+    function selectedRows() {
+      return Array.from(document.querySelectorAll("#rows input[data-row]:checked"))
+        .map((box) => parseInt(box.dataset.row, 10));
+    }
+
+    function refreshConfirm() {
+      const boxes = document.querySelectorAll("#rows input[data-row]");
+      const chosen = selectedRows().length;
+      const total = state.summary.ready + chosen;
+      const btn = $("confirm-btn");
+      btn.textContent = "Import " + total + (total === 1 ? " article" : " articles");
+      btn.disabled = total === 0;
+      $("all-conflicts").checked = boxes.length > 0 && chosen === boxes.length;
+    }
+
+    function showPreview(data, filename) {
+      state.jobId = data.job_id;
+      state.summary = data.summary;
+      $("preview-file").textContent = filename;
+
+      const chips = $("chips");
+      chips.replaceChildren();
+      chip(chips, "rows", data.summary.total);
+      chip(chips, "ready", data.summary.ready, "ready");
+      chip(chips, "conflict", data.summary.conflict, "conflict");
+      chip(chips, "error", data.summary.error, "error");
+
+      const tbody = $("rows");
+      tbody.replaceChildren();
+      data.rows.forEach((r) => {
+        const kind = LABELS[r.result] ? r.result : "error";
+        const tr = document.createElement("tr");
+        tr.className = "row-" + kind;
+        tr.appendChild(textCell(String(r.row), "num"));
+        tr.appendChild(textCell(r.title || "(empty title)", "cell-title"));
+        tr.appendChild(textCell(r.status || "-"));
+
+        const result = document.createElement("td");
+        const tag = document.createElement("span");
+        tag.className = "tag tag-" + kind;
+        tag.textContent = LABELS[kind];
+        result.appendChild(tag);
+        const notes = (r.messages || []).slice();
+        if (kind === "conflict") notes.push("You already have an article with this title.");
+        if (notes.length) {
+          const note = document.createElement("div");
+          note.className = "row-note";
+          note.textContent = notes.join(" ");
+          result.appendChild(note);
+        }
+        tr.appendChild(result);
+
+        const upd = document.createElement("td");
+        upd.className = "upd";
+        if (kind === "conflict") {
+          const box = document.createElement("input");
+          box.type = "checkbox";
+          box.dataset.row = String(r.row);
+          box.setAttribute("aria-label", "Update row " + r.row);
+          upd.appendChild(box);
+        }
+        tr.appendChild(upd);
+        tbody.appendChild(tr);
+      });
+
+      $("all-wrap").hidden = data.summary.conflict === 0;
+      refreshConfirm();
+      show("step-preview");
+      $("preview-title").focus();
+    }
+
+    $("all-conflicts").addEventListener("change", (e) => {
+      document.querySelectorAll("#rows input[data-row]").forEach((box) => {
+        box.checked = e.target.checked;
+      });
+      refreshConfirm();
+    });
+    $("rows").addEventListener("change", (e) => {
+      if (e.target.matches("input[data-row]")) refreshConfirm();
+    });
+
+    /* ----- Upload ----- */
+    $("file").addEventListener("change", () => clearErrors($("upload-form")));
+
+    $("upload-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      clearErrors(form);
+      const file = $("file").files[0];
+      if (!file) {
+        showErrors(form, { file: ["Choose an Excel (.xlsx) file first."] });
+        return;
+      }
+      const body = new FormData();
+      body.append("file", file);
+      const btn = $("preview-btn");
+      setBusy(btn, true, "Reading file...");
+      try {
+        const res = await apiFetch("/articles/import-preview/", { method: "POST", body });
+        if (res.status === 401) return;
+        const data = await res.json().catch(() => null);
+        if (res.ok && data) showPreview(data, file.name);
+        else if (res.status === 400 && data) showErrors(form, data);
+        else toast("Could not read the file. Try again.", "error");
+      } catch (err) {
+        toast("Could not reach the server.", "error");
+      } finally {
+        setBusy(btn, false);
+      }
+    });
+
+    /* ----- Confirm and progress ----- */
+    function startProgress(id) {
+      show("step-progress");
+      $("progress-title").textContent = "Importing...";
+      $("progress-text").textContent = "Waiting for the background worker...";
+      $("result-chips").hidden = true;
+      $("failure").hidden = true;
+      $("again-btn").hidden = true;
+      $("progress-title").focus();
+      pollJob(id);
+    }
+
+    function showDone(job) {
+      $("progress-title").textContent = "Import finished";
+      $("progress-text").textContent = "Your file has been processed.";
+      const chips = $("result-chips");
+      chips.replaceChildren();
+      chip(chips, "created", job.new_count, "ready");
+      chip(chips, "updated", job.updated_count, "conflict");
+      chip(chips, "skipped", job.skipped_count);
+      chips.hidden = false;
+      $("again-btn").hidden = false;
+      toast("Import finished.");
+    }
+
+    function showFailure(title, message) {
+      $("progress-title").textContent = title;
+      $("progress-text").textContent = "";
+      $("failure").textContent = message;
+      $("failure").hidden = false;
+      $("again-btn").hidden = false;
+    }
+
+    async function pollJob(id) {
+      const mine = ++pollId;
+      const started = Date.now();
+      while (mine === pollId) {
+        let job = null;
+        try {
+          const res = await apiFetch("/import-jobs/" + id + "/");
+          if (res.status === 401) return;
+          if (res.status === 404) {
+            showFailure("Import not found", "This import does not exist.");
+            return;
+          }
+          if (res.ok) job = await res.json();
+        } catch (err) {
+          /* network hiccup: try again */
+        }
+        if (mine !== pollId) return;
+        if (job) {
+          if (job.status === "done") { showDone(job); return; }
+          if (job.status === "failed") {
+            showFailure(
+              "Import failed",
+              (job.error_message || "Unknown error.") +
+                " The import is all-or-nothing, so no articles were changed."
+            );
+            return;
+          }
+          $("progress-text").textContent =
+            job.status === "running"
+              ? "Importing your articles..."
+              : "Waiting for the background worker...";
+        }
+        if (Date.now() - started > 3 * 60 * 1000) {
+          showFailure(
+            "Still working",
+            "Import #" + id + " is taking longer than usual. It will finish in the background; " +
+              "the worker may be busy or stopped."
+          );
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+    }
+
+    $("confirm-btn").addEventListener("click", async () => {
+      const btn = $("confirm-btn");
+      setBusy(btn, true, "Starting...");
+      try {
+        const res = await apiFetch("/import-jobs/" + state.jobId + "/confirm/", {
+          method: "POST",
+          body: JSON.stringify({ update_rows: selectedRows() }),
+        });
+        if (res.status === 401) return;
+        if (res.status === 202 || res.status === 409) {
+          if (res.status === 409) toast("This import was already started.");
+          startProgress(state.jobId);
+          return;
+        }
+        toast("Could not start the import.", "error");
+      } catch (err) {
+        toast("Could not reach the server.", "error");
+      } finally {
+        setBusy(btn, false);
+        if (state.summary) refreshConfirm();
+      }
+    });
+
+    /* ----- Start over ----- */
+    function restart() {
+      pollId += 1;
+      state.jobId = null;
+      state.summary = null;
+      const form = $("upload-form");
+      form.reset();
+      clearErrors(form);
+      show("step-upload");
+      $("file").focus();
+    }
+    $("restart-btn").addEventListener("click", restart);
+    $("again-btn").addEventListener("click", restart);
+  })();
+</script>
+{% endblock %}

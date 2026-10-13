@@ -17,11 +17,11 @@ function clearTokens() {
 
 /* ---------- API call (token lagata hai, 401 par login par bhejta hai) ---------- */
 async function apiFetch(url, options = {}) {
+  const isForm = typeof FormData !== "undefined" && options.body instanceof FormData;
   const headers = {
-    "Content-Type": "application/json",
+    ...(isForm ? {} : { "Content-Type": "application/json" }),
     ...(options.headers || {}),
   };
-
   const token = getAccess();
   if (token) headers.Authorization = "Bearer " + token;
   const res = await fetch(url, { ...options, headers });

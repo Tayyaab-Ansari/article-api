@@ -925,3 +925,17 @@ class ImportJobApiTests(APITestCase):
         self.assertEqual(job.status, "done")
         self.assertEqual(job.new_count, 1)
         self.assertTrue(Article.objects.filter(title="End to end", author=self.alice).exists())
+class ImportPageTests(APITestCase):
+    def test_import_page_is_served(self):
+        r = self.client.get("/import/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Import articles")
+        self.assertContains(r, 'id="upload-form"')
+
+    def test_articles_page_links_to_import(self):
+        r = self.client.get("/")
+        self.assertContains(r, 'href="/import/"')
+
+    def test_articles_page_has_one_summary_line(self):
+        r = self.client.get("/")
+        self.assertEqual(r.content.decode().count('id="summary"'), 1)

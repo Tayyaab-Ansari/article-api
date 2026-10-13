@@ -32,6 +32,7 @@ urlpatterns = [
     path("", TemplateView.as_view(template_name="list.html"), name="home"),
     path("login/", TemplateView.as_view(template_name="login.html"), name="login"),
     path("new/", TemplateView.as_view(template_name="form.html"), name="new"),
+    path("import/", TemplateView.as_view(template_name="import.html"), name="import"),
     path("edit/<int:pk>/", TemplateView.as_view(template_name="form.html"), name="edit"),
      path("register/", TemplateView.as_view(template_name="register.html"), name="register"),
     path("", include("articles.urls")),
