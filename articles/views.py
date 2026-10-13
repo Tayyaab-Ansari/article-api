@@ -16,6 +16,8 @@ from .tasks import generate_ai_summary
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from import_export.formats.base_formats import XLSX
+from rest_framework.parsers import MultiPartParser
+from .importing import ImportFileSerializer, build_preview, load_dataset
 from .resources import ArticleExportResource
 from .serializers import ArticleSerializer, SummaryEditSerializer
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -178,7 +180,6 @@ class ArticleViewSet(
         )
         article.refresh_from_db()
         return Response(self.get_serializer(article).data)
-
     @extend_schema(request=None, responses={200: OpenApiTypes.BINARY})
     @action(
         detail=False,
@@ -192,3 +193,17 @@ class ArticleViewSet(
         response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
         response["Content-Disposition"] = 'attachment; filename="articles.xlsx"'
         return response
+
+    @extend_schema(request=ImportFileSerializer, responses={200: OpenApiTypes.OBJECT})
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="import-preview",
+        parser_classes=[MultiPartParser],
+        permission_classes=[permissions.IsAuthenticated],
+    )
+    def import_preview(self, request):
+        serializer = ImportFileSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        dataset = load_dataset(serializer.validated_data["file"])
+        return Response(build_preview(dataset, request.user))

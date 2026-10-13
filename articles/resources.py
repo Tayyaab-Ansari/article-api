@@ -1,5 +1,6 @@
 from import_export.fields import Field
 from import_export.resources import ModelResource
+from import_export.widgets import Widget
 
 from .models import Article
 
@@ -20,3 +21,40 @@ class ArticleExportResource(ModelResource):
 
     def dehydrate_status(self, article):
         return "published" if article.is_published else "draft"
+
+
+class StatusWidget(Widget):
+    """Excel ke 'status' column ko True ya False (published ya draft) banata hai."""
+
+    PUBLISHED_WORDS = {"published", "publish"}
+    DRAFT_WORDS = {"draft", ""}
+
+    def clean(self, value, row=None, **kwargs):
+        text = "" if value is None else str(value).strip().lower()
+        if text in self.PUBLISHED_WORDS:
+            return True
+        if text in self.DRAFT_WORDS:
+            return False
+        raise ValueError("Status must be 'published' or 'draft'.")
+
+
+class ArticleImportResource(ModelResource):
+    is_published = Field(
+        column_name="status", attribute="is_published", widget=StatusWidget()
+    )
+
+    class Meta:
+        model = Article
+        fields = ("title", "subtitle", "description", "is_published")
+        import_id_fields = ("title",)
+        clean_model_instances = True
+
+    def __init__(self, author=None, **kwargs):
+        super().__init__(**kwargs)
+        self.author = author
+
+    def get_queryset(self):
+        return Article.objects.filter(author=self.author)
+
+    def before_save_instance(self, instance, row, **kwargs):
+        instance.author = self.author

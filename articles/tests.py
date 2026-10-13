@@ -7,6 +7,7 @@ from .models import Article
 from unittest.mock import patch
 from django.utils import timezone
 import tablib
+from django.core.files.uploadedfile import SimpleUploadedFile
 User = get_user_model()
 
 
@@ -502,3 +503,127 @@ class ArticleExportTests(APITestCase):
         auth(self.client, self.alice)
         rows = self._rows(self.client.get("/articles/export/"))
         self.assertFalse(any(t.startswith("=") for t in rows["title"]))
+
+
+XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+def xlsx_upload(rows, headers=("title", "subtitle", "description", "status"), name="articles.xlsx"):
+    ds = tablib.Dataset(headers=list(headers))
+    for row in rows:
+        ds.append(row)
+    return SimpleUploadedFile(name, ds.export("xlsx"), content_type=XLSX_TYPE)
+
+
+class ArticleImportPreviewTests(APITestCase):
+    URL = "/articles/import-preview/"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        cls.bob = User.objects.create_user("bob", password="pass12345")
+        cls.mine = Article.objects.create(
+            title="Mine", description="d", author=cls.alice, is_published=True
+        )
+        Article.objects.create(
+            title="Bobs", description="d", author=cls.bob, is_published=True
+        )
+
+    def _post(self, upload):
+        return self.client.post(self.URL, {"file": upload}, format="multipart")
+
+    def test_requires_token(self):
+        r = self._post(xlsx_upload([["A", "", "d", "draft"]]))
+        self.assertEqual(r.status_code, 401)
+
+    def test_preview_classifies_rows(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload(
+                [
+                    ["Brand new", "s", "d", "published"],  # row 2: ready
+                    ["Bad status", "s", "d", "pending"],  # row 3: error
+                    ["Mine", "s", "d", "draft"],  # row 4: conflict
+                    ["Empty status", "s", "d", None],  # row 5: ready, draft
+                    ["Bobs", "s", "d", "published"],  # row 6: bob ka title, mera nahi
+                ]
+            )
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            r.data["summary"], {"total": 5, "ready": 3, "conflict": 1, "error": 1}
+        )
+        by_row = {row["row"]: row for row in r.data["rows"]}
+        self.assertEqual(by_row[2]["result"], "ready")
+        self.assertEqual(by_row[3]["result"], "error")
+        self.assertIn("status", by_row[3]["messages"][0])
+        self.assertEqual(by_row[4]["result"], "conflict")
+        self.assertEqual(by_row[5]["result"], "ready")
+        self.assertEqual(by_row[5]["status"], "draft")
+        self.assertEqual(by_row[6]["result"], "ready")
+
+    def test_preview_does_not_change_database(self):
+        auth(self.client, self.alice)
+        self.mine.refresh_from_db()
+        before = (
+            Article.objects.count(),
+            self.mine.position,
+            self.mine.description,
+            self.mine.is_published,
+        )
+        r = self._post(
+            xlsx_upload([["Brand new", "s", "d", "published"], ["Mine", "x", "y", "draft"]])
+        )
+        self.assertEqual(r.status_code, 200)
+        self.mine.refresh_from_db()
+        after = (
+            Article.objects.count(),
+            self.mine.position,
+            self.mine.description,
+            self.mine.is_published,
+        )
+        self.assertEqual(before, after)
+
+    def test_spaces_around_title_are_ignored(self):
+        auth(self.client, self.alice)
+        r = self._post(xlsx_upload([["  Mine  ", "s", "d", "draft"]]))
+        self.assertEqual(r.data["rows"][0]["result"], "conflict")
+
+    def test_duplicate_title_inside_file_is_error(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload([["Twin", "s", "d", "draft"], ["Twin", "s", "d", "draft"]])
+        )
+        self.assertEqual(
+            r.data["summary"], {"total": 2, "ready": 1, "conflict": 0, "error": 1}
+        )
+        self.assertEqual(r.data["rows"][1]["result"], "error")
+        self.assertIn("row 2", r.data["rows"][1]["messages"][0])
+
+    def test_extra_columns_are_ignored(self):
+        auth(self.client, self.alice)
+        upload = xlsx_upload(
+            [["Fresh", "s", "d", "draft", "alice"]],
+            headers=("title", "subtitle", "description", "status", "author"),
+        )
+        r = self._post(upload)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["rows"][0]["result"], "ready")
+
+    def test_rejects_non_xlsx(self):
+        auth(self.client, self.alice)
+        upload = SimpleUploadedFile("articles.csv", b"title\nA", content_type="text/csv")
+        r = self._post(upload)
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("file", r.data)
+
+    def test_rejects_broken_xlsx(self):
+        auth(self.client, self.alice)
+        upload = SimpleUploadedFile("articles.xlsx", b"not a real excel file", content_type=XLSX_TYPE)
+        r = self._post(upload)
+        self.assertEqual(r.status_code, 400)
+
+    def test_rejects_missing_columns(self):
+        auth(self.client, self.alice)
+        r = self._post(xlsx_upload([["A", "d"]], headers=("title", "description")))
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("file", r.data)

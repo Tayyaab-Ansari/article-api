@@ -169,6 +169,7 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "CRUD API for articles with JWT authentication (Django REST Framework + PostgreSQL)",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
 }
 INTERNAL_IPS = ["127.0.0.1"]
 CELERY_BROKER_URL = config("CELERY_BROKER_URL", default="redis://localhost:6379/0")
