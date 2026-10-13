@@ -65,3 +65,36 @@ class Article(models.Model):
         if self.summary_status != "pending" or self.summary_requested_at is None:
             return False
         return self.summary_requested_at > timezone.now() - timedelta(minutes=10)
+class ImportJob(models.Model):
+    STATUS_CHOICES = [
+        ("previewed", "Previewed"),
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("done", "Done"),
+        ("failed", "Failed"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="import_jobs",
+    )
+    status = models.CharField(
+        max_length=10, choices=STATUS_CHOICES, default="previewed"
+    )
+    filename = models.CharField(max_length=255, blank=True)
+    rows = models.JSONField(default=list)
+    update_rows = models.JSONField(default=list, blank=True)
+    new_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    skipped_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"Import #{self.pk} by {self.user} ({self.status})"

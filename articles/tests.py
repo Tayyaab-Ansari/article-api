@@ -3,7 +3,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
 
-from .models import Article
+from .models import Article , ImportJob
 from unittest.mock import patch
 from django.utils import timezone
 import tablib
@@ -644,3 +644,13 @@ class ArticleImportPreviewTests(APITestCase):
         auth(self.client, self.alice)
         r = self._post(xlsx_upload([["No subtitle", None, "d", "draft"]]))
         self.assertEqual(r.data["rows"][0]["result"], "ready")
+class ImportJobModelTests(APITestCase):
+    def test_new_job_defaults(self):
+        user = User.objects.create_user("jobber", password="pass12345")
+        job = ImportJob.objects.create(user=user, filename="a.xlsx")
+        self.assertEqual(job.status, "previewed")
+        self.assertEqual(job.rows, [])
+        self.assertEqual(job.update_rows, [])
+        self.assertEqual(job.new_count, 0)
+        self.assertIsNone(job.started_at)
+        self.assertEqual(list(user.import_jobs.all()), [job])
