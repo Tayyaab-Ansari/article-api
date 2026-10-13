@@ -7,6 +7,7 @@ from .models import Article , ImportJob
 from unittest.mock import patch
 from django.utils import timezone
 import tablib
+from .importing import dataset_to_rows, rows_to_dataset
 from django.core.files.uploadedfile import SimpleUploadedFile
 User = get_user_model()
 
@@ -644,6 +645,40 @@ class ArticleImportPreviewTests(APITestCase):
         auth(self.client, self.alice)
         r = self._post(xlsx_upload([["No subtitle", None, "d", "draft"]]))
         self.assertEqual(r.data["rows"][0]["result"], "ready")
+    def test_preview_saves_a_job(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload(
+                [["Fresh", "s", "d", "published"], ["Mine", "s", "d", "draft"]],
+                name="my.xlsx",
+            )
+        )
+        self.assertEqual(r.status_code, 200)
+        job = ImportJob.objects.get(pk=r.data["job_id"])
+        self.assertEqual(job.user, self.alice)
+        self.assertEqual(job.status, "previewed")
+        self.assertEqual(job.filename, "my.xlsx")
+        self.assertEqual([x["title"] for x in job.rows], ["Fresh", "Mine"])
+        self.assertEqual([x["row"] for x in job.rows], [2, 3])
+
+    def test_rejected_file_creates_no_job(self):
+        auth(self.client, self.alice)
+        upload = SimpleUploadedFile("articles.csv", b"title\nA", content_type="text/csv")
+        r = self._post(upload)
+        self.assertEqual(r.status_code, 400)
+        self.assertEqual(ImportJob.objects.count(), 0)
+
+    def test_rows_roundtrip_through_json(self):
+        ds = tablib.Dataset(headers=["title", "subtitle", "description", "status"])
+        ds.append(["A", None, 123, "draft"])
+        rows = dataset_to_rows(ds)
+        self.assertEqual(
+            rows[0],
+            {"row": 2, "title": "A", "subtitle": None, "description": "123", "status": "draft"},
+        )
+        again = rows_to_dataset(rows)
+        self.assertEqual(again.headers, ["title", "subtitle", "description", "status"])
+        self.assertEqual(again[0], ("A", None, "123", "draft"))
 class ImportJobModelTests(APITestCase):
     def test_new_job_defaults(self):
         user = User.objects.create_user("jobber", password="pass12345")

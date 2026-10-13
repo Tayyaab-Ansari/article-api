@@ -134,3 +134,32 @@ def build_preview(dataset, author):
         "error": counts["error"],
     }
     return {"summary": summary, "rows": rows}
+def _plain(value):
+    """Cell ki value JSON mein rakhne ke qabil banata hai (None ya text)."""
+    if value is None:
+        return None
+    return value if isinstance(value, str) else str(value)
+
+
+def dataset_to_rows(dataset):
+    """Dataset ki rows ko dictionaries ki list banata hai (database ke JSONField ke liye)."""
+    rows = []
+    for index, source in enumerate(dataset.dict):
+        rows.append(
+            {
+                "row": index + 2,  # Excel mein row 1 header hai
+                "title": source["title"],
+                "subtitle": _plain(source["subtitle"]),
+                "description": _plain(source["description"]),
+                "status": _plain(source["status"]),
+            }
+        )
+    return rows
+
+
+def rows_to_dataset(rows):
+    """Database mein rakhi rows se wapas Dataset banata hai (confirm ke waqt kaam aayega)."""
+    dataset = tablib.Dataset(headers=list(REQUIRED_COLUMNS))
+    for r in rows:
+        dataset.append([r["title"], r["subtitle"], r["description"], r["status"]])
+    return dataset

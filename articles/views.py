@@ -17,8 +17,14 @@ from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from import_export.formats.base_formats import XLSX
 from rest_framework.parsers import MultiPartParser
-from .importing import ImportFileSerializer, build_preview, load_dataset
+from .importing import (
+    ImportFileSerializer,
+    build_preview,
+    dataset_to_rows,
+    load_dataset,
+)
 from .resources import ArticleExportResource
+from .models import Article, ImportJob
 from .serializers import ArticleSerializer, SummaryEditSerializer
 XLSX_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 class ArticleViewSet(
@@ -205,5 +211,13 @@ class ArticleViewSet(
     def import_preview(self, request):
         serializer = ImportFileSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        dataset = load_dataset(serializer.validated_data["file"])
-        return Response(build_preview(dataset, request.user))
+        uploaded = serializer.validated_data["file"]
+        dataset = load_dataset(uploaded)
+        preview = build_preview(dataset, request.user)
+        job = ImportJob.objects.create(
+            user=request.user,
+            filename=uploaded.name[:255],
+            rows=dataset_to_rows(dataset),
+        )
+        preview["job_id"] = job.pk
+        return Response(preview)
