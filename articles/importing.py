@@ -6,6 +6,7 @@ from rest_framework import serializers
 
 from .resources import ArticleImportResource, StatusWidget
 from django.core.exceptions import MultipleObjectsReturned
+from .models import ImportJob
 
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_ROWS = 500
@@ -163,3 +164,81 @@ def rows_to_dataset(rows):
     for r in rows:
         dataset.append([r["title"], r["subtitle"], r["description"], r["status"]])
     return dataset
+class ImportFailed(Exception):
+    """Asal import mein koi row save nahi ho saki, is liye poora import wapas."""
+
+
+def select_rows_to_import(job):
+    """Confirm ke waqt dobara classify karke wo rows chunta hai jo import hongi."""
+    dataset = rows_to_dataset(job.rows)
+    preview = build_preview(dataset, job.user)
+    wanted_updates = {int(n) for n in job.update_rows}
+    by_number = {r["row"]: r for r in job.rows}
+
+    chosen = []
+    for item in preview["rows"]:
+        if item["result"] == "ready":
+            chosen.append(by_number[item["row"]])
+        elif item["result"] == "conflict" and item["row"] in wanted_updates:
+            chosen.append(by_number[item["row"]])
+    return chosen
+
+
+def run_import(job):
+    """Chuni hui rows asal mein save karta hai, ek hi transaction mein."""
+    chosen = select_rows_to_import(job)
+    created = updated = 0
+    if chosen:
+        with transaction.atomic():
+            result = ArticleImportResource(author=job.user).import_data(
+                rows_to_dataset(chosen), dry_run=False
+            )
+            problems = [
+                r for r in result.rows if r.import_type in ("error", "invalid")
+            ]
+            if problems or result.base_errors:
+                raise ImportFailed(f"{len(problems)} row(s) could not be saved.")
+            created = sum(1 for r in result.rows if r.import_type == "new")
+            updated = sum(1 for r in result.rows if r.import_type == "update")
+    return {
+        "new": created,
+        "updated": updated,
+        "skipped": len(job.rows) - created - updated,
+    }
+class ImportJobSerializer(serializers.ModelSerializer):
+    total_rows = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ImportJob
+        fields = (
+            "id",
+            "status",
+            "filename",
+            "total_rows",
+            "new_count",
+            "updated_count",
+            "skipped_count",
+            "error_message",
+            "created_at",
+            "started_at",
+            "finished_at",
+        )
+        read_only_fields = fields
+
+    def get_total_rows(self, job) -> int:
+        return len(job.rows)
+
+
+class ImportConfirmSerializer(serializers.Serializer):
+    update_rows = serializers.ListField(
+        child=serializers.IntegerField(min_value=2),
+        required=False,
+        default=list,
+    )
+
+    def validate_update_rows(self, numbers):
+        known = {r["row"] for r in self.context["job"].rows}
+        unknown = sorted(set(numbers) - known)
+        if unknown:
+            raise serializers.ValidationError(f"Unknown row numbers: {unknown}.")
+        return sorted(set(numbers))

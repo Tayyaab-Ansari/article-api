@@ -1,8 +1,10 @@
 from celery import shared_task
 
-from .models import Article
 import httpx
 from django.conf import settings
+from .models import Article, ImportJob
+from django.utils import timezone
+from .importing import run_import
 from celery.utils.log import get_task_logger
 
 logger = get_task_logger(__name__)
@@ -71,3 +73,32 @@ def count_summaries():
         total,
     )
     return f"with={with_summary}, without={without_summary}"
+@shared_task
+def run_import_job(job_id):
+    claimed = ImportJob.objects.filter(pk=job_id, status="queued").update(
+        status="running", started_at=timezone.now()
+    )
+    if not claimed:
+        return "skipped: job is not queued"
+
+    job = ImportJob.objects.get(pk=job_id)
+    try:
+        counts = run_import(job)
+    except Exception as exc:
+        ImportJob.objects.filter(pk=job_id).update(
+            status="failed",
+            error_message=str(exc)[:2000],
+            finished_at=timezone.now(),
+        )
+        logger.info("Import job %s failed: %s", job_id, exc)
+        return f"failed: {exc}"
+
+    ImportJob.objects.filter(pk=job_id).update(
+        status="done",
+        new_count=counts["new"],
+        updated_count=counts["updated"],
+        skipped_count=counts["skipped"],
+        finished_at=timezone.now(),
+    )
+    logger.info("Import job %s done: %s", job_id, counts)
+    return f"done: {counts}"

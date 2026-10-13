@@ -58,3 +58,6 @@ class ArticleImportResource(ModelResource):
 
     def before_save_instance(self, instance, row, **kwargs):
         instance.author = self.author
+        # Excel ka khali cell None ban kar aata hai, lekin subtitle null nahi ho sakta
+        if instance.subtitle is None:
+            instance.subtitle = ""

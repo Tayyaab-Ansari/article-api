@@ -8,6 +8,8 @@ from unittest.mock import patch
 from django.utils import timezone
 import tablib
 from .importing import dataset_to_rows, rows_to_dataset
+from .tasks import run_import_job
+from .tasks import run_import_job as run_import_job_for_real
 from django.core.files.uploadedfile import SimpleUploadedFile
 User = get_user_model()
 
@@ -689,3 +691,237 @@ class ImportJobModelTests(APITestCase):
         self.assertEqual(job.new_count, 0)
         self.assertIsNone(job.started_at)
         self.assertEqual(list(user.import_jobs.all()), [job])
+def make_job(user, rows, update_rows=(), status="queued"):
+    ds = tablib.Dataset(headers=["title", "subtitle", "description", "status"])
+    for row in rows:
+        ds.append(row)
+    return ImportJob.objects.create(
+        user=user,
+        filename="t.xlsx",
+        rows=dataset_to_rows(ds),
+        update_rows=list(update_rows),
+        status=status,
+    )
+
+
+class ImportRunTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        cls.bob = User.objects.create_user("bob", password="pass12345")
+        cls.mine = Article.objects.create(
+            title="Mine", description="Original", author=cls.alice, is_published=True
+        )
+        cls.bobs = Article.objects.create(
+            title="Bobs", description="Bob text", author=cls.bob, is_published=True
+        )
+
+    def test_ready_rows_are_created_for_the_job_owner(self):
+        job = make_job(
+            self.alice,
+            [
+                ["New pub", "s", "d", "published"],
+                ["New draft", "s", "d", "draft"],
+                ["No status", "s", "d", None],
+            ],
+        )
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "done")
+        self.assertEqual(
+            (job.new_count, job.updated_count, job.skipped_count), (3, 0, 0)
+        )
+        self.assertIsNotNone(job.started_at)
+        self.assertIsNotNone(job.finished_at)
+        pub = Article.objects.get(title="New pub")
+        self.assertEqual(pub.author, self.alice)
+        self.assertTrue(pub.is_published)
+        self.assertEqual(pub.position, 1)
+        self.assertIsNone(Article.objects.get(title="New draft").position)
+        self.assertFalse(Article.objects.get(title="No status").is_published)
+
+    def test_conflict_is_skipped_by_default(self):
+        job = make_job(self.alice, [["Mine", "changed", "changed body", "draft"]])
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(
+            (job.new_count, job.updated_count, job.skipped_count), (0, 0, 1)
+        )
+        self.mine.refresh_from_db()
+        self.assertEqual(self.mine.description, "Original")
+        self.assertTrue(self.mine.is_published)
+
+    def test_conflict_is_updated_when_user_chose_it(self):
+        job = make_job(
+            self.alice,
+            [["Mine", "changed", "changed body", "draft"]],
+            update_rows=[2],
+        )
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(
+            (job.new_count, job.updated_count, job.skipped_count), (0, 1, 0)
+        )
+        self.mine.refresh_from_db()
+        self.assertEqual(self.mine.description, "changed body")
+        self.assertFalse(self.mine.is_published)
+        self.assertIsNone(self.mine.position)
+
+    def test_error_rows_are_skipped_and_the_rest_imported(self):
+        job = make_job(
+            self.alice,
+            [
+                ["Good", "s", "d", "draft"],
+                ["Bad status", "s", "d", "pending"],
+                ["", "s", "d", "draft"],
+            ],
+        )
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "done")
+        self.assertEqual(
+            (job.new_count, job.updated_count, job.skipped_count), (1, 0, 2)
+        )
+        self.assertTrue(Article.objects.filter(title="Good").exists())
+        self.assertFalse(Article.objects.filter(title="Bad status").exists())
+
+    def test_another_users_article_is_never_touched(self):
+        job = make_job(
+            self.alice, [["Bobs", "x", "y", "draft"]], update_rows=[2]
+        )
+        run_import_job(job.pk)
+        self.bobs.refresh_from_db()
+        self.assertEqual(self.bobs.description, "Bob text")
+        self.assertEqual(Article.objects.filter(title="Bobs").count(), 2)
+        self.assertTrue(
+            Article.objects.filter(title="Bobs", author=self.alice).exists()
+        )
+
+    def test_blank_subtitle_is_saved_as_empty_string(self):
+        job = make_job(self.alice, [["Blank sub", None, "d", "draft"]])
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "done")
+        self.assertEqual(Article.objects.get(title="Blank sub").subtitle, "")
+
+    def test_job_that_is_not_queued_is_ignored(self):
+        job = make_job(
+            self.alice, [["Nope", "s", "d", "draft"]], status="previewed"
+        )
+        run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "previewed")
+        self.assertFalse(Article.objects.filter(title="Nope").exists())
+
+    def test_failure_rolls_back_every_row(self):
+        job = make_job(
+            self.alice,
+            [
+                ["Good row", "s", "d", "draft"],
+                ["Bad row", "s", "d", "pending"],
+            ],
+        )
+        with patch("articles.importing.select_rows_to_import", return_value=job.rows):
+            run_import_job(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "failed")
+        self.assertIn("could not be saved", job.error_message)
+        self.assertFalse(Article.objects.filter(title="Good row").exists())
+class ImportJobApiTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        cls.bob = User.objects.create_user("bob", password="pass12345")
+
+    def _job(self, user=None, rows=None, status="previewed"):
+        return make_job(
+            user or self.alice,
+            rows or [["Fresh", "s", "d", "published"]],
+            status=status,
+        )
+
+    def _confirm(self, job, body=None):
+        return self.client.post(
+            f"/import-jobs/{job.pk}/confirm/", body or {}, format="json"
+        )
+
+    def test_requires_token(self):
+        job = self._job()
+        self.assertEqual(self.client.get(f"/import-jobs/{job.pk}/").status_code, 401)
+        self.assertEqual(self._confirm(job).status_code, 401)
+
+    def test_owner_sees_status(self):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["A", "s", "d", "draft"], ["B", "s", "d", "draft"]])
+        r = self.client.get(f"/import-jobs/{job.pk}/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["status"], "previewed")
+        self.assertEqual(r.data["total_rows"], 2)
+
+    def test_other_users_job_is_404(self):
+        job = self._job(user=self.alice)
+        auth(self.client, self.bob)
+        self.assertEqual(self.client.get(f"/import-jobs/{job.pk}/").status_code, 404)
+        self.assertEqual(self._confirm(job).status_code, 404)
+
+    @patch("articles.import_views.run_import_job")
+    def test_confirm_queues_the_task(self, mock_task):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["A", "s", "d", "draft"], ["B", "s", "d", "draft"]])
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self._confirm(job, {"update_rows": [3, 2, 3]})
+        self.assertEqual(r.status_code, 202)
+        self.assertEqual(r.data["status"], "queued")
+        job.refresh_from_db()
+        self.assertEqual(job.update_rows, [2, 3])
+        mock_task.delay.assert_called_once_with(job.pk)
+
+    @patch("articles.import_views.run_import_job")
+    def test_confirm_without_body_means_skip_conflicts(self, mock_task):
+        auth(self.client, self.alice)
+        job = self._job()
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self._confirm(job)
+        self.assertEqual(r.status_code, 202)
+        job.refresh_from_db()
+        self.assertEqual(job.update_rows, [])
+
+    @patch("articles.import_views.run_import_job")
+    def test_second_confirm_is_409(self, mock_task):
+        auth(self.client, self.alice)
+        job = self._job()
+        with self.captureOnCommitCallbacks(execute=True):
+            first = self._confirm(job)
+            second = self._confirm(job)
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(mock_task.delay.call_count, 1)
+
+    @patch("articles.import_views.run_import_job")
+    def test_unknown_row_number_is_rejected(self, mock_task):
+        auth(self.client, self.alice)
+        job = self._job()
+        r = self._confirm(job, {"update_rows": [99]})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("update_rows", r.data)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "previewed")
+        mock_task.delay.assert_not_called()
+
+    def test_header_row_number_is_rejected(self):
+        auth(self.client, self.alice)
+        job = self._job()
+        r = self._confirm(job, {"update_rows": [1]})
+        self.assertEqual(r.status_code, 400)
+
+    @patch("articles.import_views.run_import_job")
+    def test_confirmed_job_runs_end_to_end(self, mock_task):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["End to end", "s", "d", "published"]])
+        with self.captureOnCommitCallbacks(execute=True):
+            self._confirm(job)
+        run_import_job_for_real(job.pk)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "done")
+        self.assertEqual(job.new_count, 1)
+        self.assertTrue(Article.objects.filter(title="End to end", author=self.alice).exists())
