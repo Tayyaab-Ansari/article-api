@@ -5,6 +5,7 @@ from django.db import transaction
 from rest_framework import serializers
 
 from .resources import ArticleImportResource, StatusWidget
+from django.core.exceptions import MultipleObjectsReturned
 
 MAX_FILE_BYTES = 5 * 1024 * 1024  # 5 MB
 MAX_ROWS = 500
@@ -73,10 +74,15 @@ def _error_messages(row):
                 messages += [f"{label}: {text}" for text in texts]
         else:
             messages.append(str(problems))
+    for error in row.errors:
+        if isinstance(error.error, MultipleObjectsReturned):
+            messages.append(
+                "You have more than one article with this title, "
+                "so it cannot be matched. Rename or delete the extra one first."
+            )
     if row.errors and not messages:
         messages.append("Could not process this row.")
     return messages
-
 
 def build_preview(dataset, author):
     # dry_run ke upar apna rollback bhi: kuch bhi ho, database mein kuch nahi rehta

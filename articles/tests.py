@@ -627,3 +627,20 @@ class ArticleImportPreviewTests(APITestCase):
         r = self._post(xlsx_upload([["A", "d"]], headers=("title", "description")))
         self.assertEqual(r.status_code, 400)
         self.assertIn("file", r.data)
+    def test_several_own_articles_with_same_title_is_error(self):
+        Article.objects.create(
+            title="Twin", description="d", author=self.alice, is_published=True
+        )
+        Article.objects.create(
+            title="Twin", description="d", author=self.alice, is_published=False
+        )
+        auth(self.client, self.alice)
+        r = self._post(xlsx_upload([["Twin", "s", "d", "draft"]]))
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["rows"][0]["result"], "error")
+        self.assertIn("more than one", r.data["rows"][0]["messages"][0])
+
+    def test_blank_subtitle_is_accepted(self):
+        auth(self.client, self.alice)
+        r = self._post(xlsx_upload([["No subtitle", None, "d", "draft"]]))
+        self.assertEqual(r.data["rows"][0]["result"], "ready")
