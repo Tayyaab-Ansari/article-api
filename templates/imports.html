@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Imports{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Import history</h1>
+    <p class="page-sub" id="scope-note">Loading...</p>
+  </div>
+  <div class="head-actions">
+    <a class="btn btn-ghost" href="/import/">Import Excel</a>
+    <a class="btn btn-ghost" href="/">Back to articles</a>
+  </div>
+</div>
+
+<ul class="stat-cards" id="cards">
+  <li><button type="button" class="stat" data-status="previewed" aria-pressed="false"
+        title="Previewed, but not confirmed yet">
+    <span class="stat-num">-</span><span class="stat-label">Waiting for you</span></button></li>
+  <li><button type="button" class="stat" data-status="queued" aria-pressed="false"
+        title="Confirmed, waiting for the worker">
+    <span class="stat-num">-</span><span class="stat-label">Pending</span></button></li>
+  <li><button type="button" class="stat" data-status="running" aria-pressed="false">
+    <span class="stat-num">-</span><span class="stat-label">Running</span></button></li>
+  <li><button type="button" class="stat" data-status="done" aria-pressed="false">
+    <span class="stat-num">-</span><span class="stat-label">Done</span></button></li>
+  <li><button type="button" class="stat" data-status="failed" aria-pressed="false">
+    <span class="stat-num">-</span><span class="stat-label">Failed</span></button></li>
+</ul>
+
+<div class="list-bar">
+  <p class="page-sub" id="list-summary"></p>
+  <button type="button" class="btn-text" id="clear-filter" hidden>Show all</button>
+</div>
+<p class="live-note" id="live" hidden>Live: refreshing every 5 seconds while jobs are pending or running.</p>
+
+<div class="table-wrap" id="table-wrap" hidden>
+  <table class="import-table jobs-table" id="jobs-table">
+    <thead>
+      <tr>
+        <th scope="col">#</th>
+        <th scope="col" class="col-user">User</th>
+        <th scope="col">File</th>
+        <th scope="col">Status</th>
+        <th scope="col">Created</th>
+        <th scope="col">Updated</th>
+        <th scope="col">Skipped</th>
+        <th scope="col">Started</th>
+        <th scope="col">Finished</th>
+      </tr>
+    </thead>
+    <tbody id="jobs"></tbody>
+  </table>
+</div>
+
+<div class="panel empty" id="empty" hidden>
+  <h2>No imports here</h2>
+  <p id="empty-text">You have not imported anything yet.</p>
+  <a class="btn btn-primary" href="/import/">Import Excel</a>
+</div>
+
+<nav class="pager" id="pager" aria-label="Pages" hidden>
+  <button type="button" class="btn btn-ghost" id="prev">Previous</button>
+  <span id="page-info"></span>
+  <button type="button" class="btn btn-ghost" id="next">Next</button>
+</nav>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  (function () {
+    if (!getAccess()) {
+      flash("Log in to see imports.", "error");
+      window.location = "/login/";
+      return;
+    }
+
+    const $ = (id) => document.getElementById(id);
+    const STATUSES = ["previewed", "queued", "running", "done", "failed"];
+    const LABELS = {
+      previewed: "Waiting for you",
+      queued: "Pending",
+      running: "Running",
+      done: "Done",
+      failed: "Failed",
+    };
+    const REFRESH_MS = 5000;
+
+    const params = new URLSearchParams(window.location.search);
+    let status = STATUSES.includes(params.get("status")) ? params.get("status") : "";
+    let page = Math.max(parseInt(params.get("page"), 10) || 1, 1);
+    let scope = "mine";
+    let requestId = 0;
+    let timer = 0;
+
+    function syncUrl() {
+      const q = new URLSearchParams();
+      if (status) q.set("status", status);
+      if (page > 1) q.set("page", String(page));
+      const s = q.toString();
+      history.replaceState(null, "", s ? "?" + s : window.location.pathname);
+    }
+
+    function fmt(iso) {
+      if (!iso) return "-";
+      const d = new Date(iso);
+      if (isNaN(d)) return "-";
+      return d.toLocaleString("en-GB", {
+        day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+      });
+    }
+
+    function cell(text, className) {
+      const td = document.createElement("td");
+      if (className) td.className = className;
+      td.textContent = text;
+      return td;
+    }
+
+    function renderCards(counts) {
+      document.querySelectorAll(".stat").forEach((btn) => {
+        const s = btn.dataset.status;
+        btn.querySelector(".stat-num").textContent = String(counts[s] || 0);
+        btn.setAttribute("aria-pressed", String(s === status));
+        btn.classList.toggle("active", s === status);
+      });
+    }
+
+    function renderRows(jobs) {
+      const tbody = $("jobs");
+      tbody.replaceChildren();
+      jobs.forEach((job) => {
+        const tr = document.createElement("tr");
+        tr.appendChild(cell(String(job.id), "num"));
+        tr.appendChild(cell(job.user || "", "col-user"));
+
+        const file = document.createElement("td");
+        file.className = "cell-title";
+        file.textContent = job.filename || "(no name)";
+        if (job.status === "failed" && job.error_message) {
+          const note = document.createElement("div");
+          note.className = "row-note fail-note";
+          note.textContent = job.error_message;
+          file.appendChild(note);
+        }
+        tr.appendChild(file);
+
+        const st = document.createElement("td");
+        const tag = document.createElement("span");
+        const known = STATUSES.includes(job.status);
+        tag.className = "tag st-" + (known ? job.status : "previewed");
+        tag.textContent = known ? LABELS[job.status] : String(job.status);
+        st.appendChild(tag);
+        tr.appendChild(st);
+
+        tr.appendChild(cell(String(job.new_count), "num"));
+        tr.appendChild(cell(String(job.updated_count), "num"));
+        tr.appendChild(cell(String(job.skipped_count), "num"));
+        tr.appendChild(cell(fmt(job.started_at)));
+        tr.appendChild(cell(fmt(job.finished_at)));
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function load() {
+      const mine = ++requestId;
+      clearTimeout(timer);
+
+      const qs = new URLSearchParams();
+      if (status) qs.set("status", status);
+      qs.set("page", String(page));
+
+      let sumRes, listRes;
+      try {
+        [sumRes, listRes] = await Promise.all([
+          apiFetch("/import-jobs/summary/"),
+          apiFetch("/import-jobs/?" + qs.toString()),
+        ]);
+      } catch (err) {
+        if (mine === requestId) toast("Could not reach the server.", "error");
+        return;
+      }
+      if (mine !== requestId) return;
+      if (sumRes.status === 401 || listRes.status === 401) return;
+
+      if (listRes.status === 404 && page > 1) {
+        page = 1;
+        syncUrl();
+        return load();
+      }
+      if (!sumRes.ok || !listRes.ok) {
+        toast("Could not load imports.", "error");
+        return;
+      }
+
+      const summary = await sumRes.json();
+      const data = await listRes.json();
+      if (mine !== requestId) return;
+
+      scope = summary.scope;
+      $("jobs-table").classList.toggle("hide-user", scope !== "all");
+      $("scope-note").textContent =
+        scope === "all" ? "Showing imports from all users." : "Showing your imports.";
+      renderCards(summary.counts);
+
+      const label = status ? " with status " + LABELS[status] : "";
+      $("list-summary").textContent =
+        data.count + (data.count === 1 ? " import" : " imports") + label;
+      $("clear-filter").hidden = !status;
+
+      const has = data.results.length > 0;
+      $("table-wrap").hidden = !has;
+      $("empty").hidden = has;
+      $("pager").hidden = !(data.previous || data.next);
+      if (has) {
+        renderRows(data.results);
+      } else {
+        $("empty-text").textContent = status
+          ? "No imports with this status."
+          : "You have not imported anything yet.";
+      }
+      $("page-info").textContent = "Page " + page;
+      $("prev").disabled = !data.previous;
+      $("next").disabled = !data.next;
+
+      const active = (summary.counts.queued || 0) + (summary.counts.running || 0) > 0;
+      $("live").hidden = !active;
+      if (active) timer = setTimeout(tick, REFRESH_MS);
+    }
+
+    function tick() {
+      if (document.hidden) {
+        timer = setTimeout(tick, REFRESH_MS);
+        return;
+      }
+      load();
+    }
+
+    document.querySelectorAll(".stat").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const s = btn.dataset.status;
+        status = status === s ? "" : s;
+        page = 1;
+        syncUrl();
+        load();
+      });
+    });
+    $("clear-filter").addEventListener("click", () => {
+      status = "";
+      page = 1;
+      syncUrl();
+      load();
+    });
+    $("prev").addEventListener("click", () => {
+      if (page > 1) { page -= 1; syncUrl(); load(); }
+    });
+    $("next").addEventListener("click", () => {
+      page += 1;
+      syncUrl();
+      load();
+    });
+
+    load();
+  })();
+</script>
+{% endblock %}

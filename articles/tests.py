@@ -1081,3 +1081,13 @@ class ImportJobListApiTests(APITestCase):
         with CaptureQueriesContext(connection) as many:
             self.client.get("/import-jobs/")
         self.assertEqual(len(few), len(many))
+class ImportsPageTests(APITestCase):
+    def test_imports_page_is_served(self):
+        r = self.client.get("/imports/")
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Import history")
+        self.assertContains(r, 'id="cards"')
+
+    def test_articles_page_links_to_imports(self):
+        r = self.client.get("/")
+        self.assertContains(r, 'href="/imports/"')
