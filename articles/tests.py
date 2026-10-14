@@ -681,6 +681,16 @@ class ArticleImportPreviewTests(APITestCase):
         again = rows_to_dataset(rows)
         self.assertEqual(again.headers, ["title", "subtitle", "description", "status"])
         self.assertEqual(again[0], ("A", None, "123", "draft"))
+    def test_header_names_ignore_case_and_spaces(self):
+        auth(self.client, self.alice)
+        upload = xlsx_upload(
+            [["Fresh", "s", "d", "Published"]],
+            headers=(" Title ", "SUBTITLE", "Description", "Status"),
+        )
+        r = self._post(upload)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["rows"][0]["result"], "ready")
+        self.assertEqual(r.data["rows"][0]["status"], "published")
 class ImportJobModelTests(APITestCase):
     def test_new_job_defaults(self):
         user = User.objects.create_user("jobber", password="pass12345")
