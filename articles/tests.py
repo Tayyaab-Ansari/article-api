@@ -949,3 +949,35 @@ class ImportPageTests(APITestCase):
     def test_articles_page_has_one_summary_line(self):
         r = self.client.get("/")
         self.assertEqual(r.content.decode().count('id="summary"'), 1)
+
+class ImportJobAdminTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.root = User.objects.create(
+            username="root", is_staff=True, is_superuser=True
+        )
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        make_job(cls.alice, [["A", "s", "d", "draft"]], status="done")
+        make_job(cls.alice, [["B", "s", "d", "draft"]], status="failed")
+        make_job(cls.alice, [["C", "s", "d", "draft"]], status="failed")
+
+    def test_staff_sees_the_job_list(self):
+        self.client.force_login(self.root)
+        r = self.client.get("/admin/articles/importjob/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.context["cl"].result_count, 3)
+
+    def test_status_filter(self):
+        self.client.force_login(self.root)
+        r = self.client.get("/admin/articles/importjob/?status__exact=failed")
+        self.assertEqual(r.context["cl"].result_count, 2)
+
+    def test_jobs_cannot_be_added_in_admin(self):
+        self.client.force_login(self.root)
+        r = self.client.get("/admin/articles/importjob/add/")
+        self.assertEqual(r.status_code, 403)
+
+    def test_normal_user_cannot_open_admin_list(self):
+        self.client.force_login(self.alice)
+        r = self.client.get("/admin/articles/importjob/")
+        self.assertEqual(r.status_code, 302)
