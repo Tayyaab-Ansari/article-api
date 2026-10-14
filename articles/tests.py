@@ -11,6 +11,8 @@ from .importing import dataset_to_rows, rows_to_dataset
 from .tasks import run_import_job
 from .tasks import run_import_job as run_import_job_for_real
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 User = get_user_model()
 
 
@@ -981,3 +983,101 @@ class ImportJobAdminTests(APITestCase):
         self.client.force_login(self.alice)
         r = self.client.get("/admin/articles/importjob/")
         self.assertEqual(r.status_code, 302)
+class ImportJobListApiTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+        cls.bob = User.objects.create_user("bob", password="pass12345")
+        cls.root = User.objects.create(username="root", is_staff=True)
+        row = [["A", "s", "d", "draft"]]
+        cls.alice_done = make_job(cls.alice, row, status="done")
+        cls.alice_failed = make_job(cls.alice, row, status="failed")
+        cls.alice_previewed = make_job(cls.alice, row, status="previewed")
+        make_job(cls.bob, row, status="queued")
+        make_job(cls.bob, row, status="running")
+
+    def test_requires_token(self):
+        self.assertEqual(self.client.get("/import-jobs/").status_code, 401)
+        self.assertEqual(self.client.get("/import-jobs/summary/").status_code, 401)
+
+    def test_user_sees_only_own_jobs(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/import-jobs/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["count"], 3)
+        self.assertEqual({j["user"] for j in r.data["results"]}, {"alice"})
+
+    def test_staff_sees_every_job(self):
+        auth(self.client, self.root)
+        r = self.client.get("/import-jobs/")
+        self.assertEqual(r.data["count"], 5)
+        self.assertEqual({j["user"] for j in r.data["results"]}, {"alice", "bob"})
+
+    def test_list_has_no_heavy_fields(self):
+        auth(self.client, self.alice)
+        first = self.client.get("/import-jobs/").data["results"][0]
+        self.assertNotIn("rows", first)
+        self.assertNotIn("total_rows", first)
+        self.assertIn("user", first)
+
+    def test_status_filter(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/import-jobs/?status=failed")
+        self.assertEqual(r.data["count"], 1)
+        self.assertEqual(r.data["results"][0]["id"], self.alice_failed.pk)
+
+    def test_invalid_status_is_400(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/import-jobs/?status=nope")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("status", r.data)
+
+    def test_summary_for_a_user(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/import-jobs/summary/")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["scope"], "mine")
+        self.assertEqual(r.data["total"], 3)
+        self.assertEqual(
+            r.data["counts"],
+            {"previewed": 1, "queued": 0, "running": 0, "done": 1, "failed": 1},
+        )
+
+    def test_summary_for_staff_covers_everyone(self):
+        auth(self.client, self.root)
+        r = self.client.get("/import-jobs/summary/")
+        self.assertEqual(r.data["scope"], "all")
+        self.assertEqual(r.data["total"], 5)
+        self.assertEqual(r.data["counts"]["queued"], 1)
+        self.assertEqual(r.data["counts"]["running"], 1)
+
+    def test_summary_lists_every_status_even_when_zero(self):
+        auth(self.client, self.bob)
+        counts = self.client.get("/import-jobs/summary/").data["counts"]
+        self.assertEqual(
+            set(counts), {"previewed", "queued", "running", "done", "failed"}
+        )
+        self.assertEqual(counts["done"], 0)
+
+    def test_staff_can_view_but_not_confirm_another_users_job(self):
+        auth(self.client, self.root)
+        seen = self.client.get(f"/import-jobs/{self.alice_previewed.pk}/")
+        self.assertEqual(seen.status_code, 200)
+        with patch("articles.import_views.run_import_job") as mock_task:
+            r = self.client.post(
+                f"/import-jobs/{self.alice_previewed.pk}/confirm/", {}, format="json"
+            )
+        self.assertEqual(r.status_code, 403)
+        self.alice_previewed.refresh_from_db()
+        self.assertEqual(self.alice_previewed.status, "previewed")
+        mock_task.delay.assert_not_called()
+
+    def test_list_queries_do_not_grow_with_jobs(self):
+        auth(self.client, self.root)
+        with CaptureQueriesContext(connection) as few:
+            self.client.get("/import-jobs/")
+        for _ in range(4):
+            make_job(self.alice, [["X", "s", "d", "draft"]], status="done")
+        with CaptureQueriesContext(connection) as many:
+            self.client.get("/import-jobs/")
+        self.assertEqual(len(few), len(many))

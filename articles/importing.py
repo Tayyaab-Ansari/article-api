@@ -242,3 +242,22 @@ class ImportConfirmSerializer(serializers.Serializer):
         if unknown:
             raise serializers.ValidationError(f"Unknown row numbers: {unknown}.")
         return sorted(set(numbers))
+class ImportJobListSerializer(serializers.ModelSerializer):
+    user = serializers.CharField(source="user.username", read_only=True)
+
+    class Meta:
+        model = ImportJob
+        fields = (
+            "id",
+            "user",
+            "status",
+            "filename",
+            "new_count",
+            "updated_count",
+            "skipped_count",
+            "error_message",
+            "created_at",
+            "started_at",
+            "finished_at",
+        )
+        read_only_fields = fields
