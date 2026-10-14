@@ -349,7 +349,30 @@ class ArticleCRUDTests(APITestCase):
             format="json",
         )
         self.assertEqual(r.status_code, 401)
+    def test_response_has_uuid(self):
+        auth(self.client, self.bob)
+        r = self.client.get(self.url)
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.data["uuid"], str(self.article.uuid))
 
+    def test_each_article_gets_its_own_uuid(self):
+        other = Article.objects.create(
+            title="Other", description="x", author=self.alice, is_published=True
+        )
+        self.assertNotEqual(self.article.uuid, other.uuid)
+
+    def test_client_cannot_set_uuid(self):
+        old_uuid = self.article.uuid
+        auth(self.client, self.alice)
+        r = self.client.patch(
+            self.url,
+            {"uuid": "11111111-1111-1111-1111-111111111111"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.article.refresh_from_db()
+        self.assertEqual(self.article.uuid, old_uuid)
+        
 class ArticleSearchTests(APITestCase):
     def setUp(self):
         self.alice = User.objects.create_user("alice", password="pass12345")

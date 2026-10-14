@@ -3,6 +3,7 @@ from django.db import models, transaction
 from django.db.models import F
 from datetime import timedelta
 from django.utils import timezone
+import uuid
 class Article(models.Model):
     title = models.CharField(max_length=255)
     subtitle = models.CharField(max_length=255, blank=True)
@@ -25,6 +26,7 @@ class Article(models.Model):
         default="none",
     )
     summary_requested_at = models.DateTimeField(null=True, blank=True)
+    uuid = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
 
     class Meta:
              ordering = ["position", "-created_at"]
