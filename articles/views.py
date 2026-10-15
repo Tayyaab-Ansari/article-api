@@ -230,13 +230,6 @@ class ArticleViewSet(
             error_count=preview["summary"]["error"],
         )
 
-        auto_started = False
-        if (
-            settings.AUTO_START_CLEAN_IMPORTS
-            and job.error_count == 0
-            and job.conflict_count == 0
-        ):
-            auto_started = job.queue()
-        preview["auto_started"] = auto_started
+
         preview["job_id"] = job.pk
         return Response(preview)
