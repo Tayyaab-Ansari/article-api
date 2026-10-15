@@ -813,6 +813,7 @@ class ArticleImportPreviewTests(APITestCase):
         job = ImportJob.objects.get(pk=r.data["job_id"])
         self.assertEqual(job.conflict_count, 1)
         self.assertEqual(job.error_count, 1)
+        self.assertEqual(job.ready_count, 1)
 
  
 class ImportJobModelTests(APITestCase):
@@ -1217,10 +1218,12 @@ class ProcessWaitingImportsTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
         cls.alice = User.objects.create_user("alice", password="pass12345")
-
-    def _job(self, minutes_old=0, conflicts=0, errors=0):
+    def _job(self, minutes_old=0, conflicts=0, errors=0, ready=1):
         job = ImportJob.objects.create(
-            user=self.alice, conflict_count=conflicts, error_count=errors
+            user=self.alice,
+            conflict_count=conflicts,
+            error_count=errors,
+            ready_count=ready,
         )
         ImportJob.objects.filter(pk=job.pk).update(
             created_at=timezone.now() - timedelta(minutes=minutes_old)
@@ -1238,15 +1241,17 @@ class ProcessWaitingImportsTests(APITestCase):
         mock_task.delay.assert_called_once_with(job.pk)
 
     @override_settings(AUTO_START_CLEAN_IMPORTS=True)
-    def test_conflict_job_is_not_queued_and_young_one_stays(self):
-        job = self._job(minutes_old=3, conflicts=1)
-        process_waiting_imports()
+    @patch("articles.tasks.run_import_job")
+    def test_job_with_conflicts_and_ready_rows_is_queued(self, mock_task):
+        job = self._job(conflicts=5, errors=5, ready=5)
+        with self.captureOnCommitCallbacks(execute=True):
+            process_waiting_imports()
         job.refresh_from_db()
-        self.assertEqual(job.status, "previewed")
+        self.assertEqual(job.status, "queued")
 
     @override_settings(AUTO_START_CLEAN_IMPORTS=True)
     def test_old_conflict_job_is_deleted(self):
-        job = self._job(minutes_old=11, errors=1)
+        job = self._job(minutes_old=11, errors=1, ready=0)
         process_waiting_imports()
         self.assertFalse(ImportJob.objects.filter(pk=job.pk).exists())
 
@@ -1265,3 +1270,9 @@ class ProcessWaitingImportsTests(APITestCase):
         ImportJob.objects.filter(pk=job.pk).update(status="done")
         process_waiting_imports()
         self.assertTrue(ImportJob.objects.filter(pk=job.pk).exists())
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    def test_job_without_ready_rows_is_not_queued(self):
+        job = self._job(conflicts=2, ready=0)
+        process_waiting_imports()
+        job.refresh_from_db()
+        self.assertEqual(job.status, "previewed")

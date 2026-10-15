@@ -228,6 +228,7 @@ class ArticleViewSet(
             rows=dataset_to_rows(dataset),
             conflict_count=preview["summary"]["conflict"],
             error_count=preview["summary"]["error"],
+            ready_count=preview["summary"]["ready"],
         )
 
 

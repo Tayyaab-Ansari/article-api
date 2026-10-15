@@ -112,7 +112,7 @@ def process_waiting_imports():
     if settings.AUTO_START_CLEAN_IMPORTS:
         clean_ids = list(
             ImportJob.objects.filter(
-                status="previewed", error_count=0, conflict_count=0
+                status="previewed", ready_count__gt=0
             ).values_list("pk", flat=True)
         )
         for job_id in clean_ids:
