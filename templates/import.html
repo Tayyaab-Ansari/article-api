@@ -305,7 +305,6 @@
         await new Promise((resolve) => setTimeout(resolve, 2000));
       }
     }
-
     $("confirm-btn").addEventListener("click", async () => {
       const btn = $("confirm-btn");
       setBusy(btn, true, "Starting...");
@@ -320,6 +319,11 @@
           startProgress(state.jobId);
           return;
         }
+        if (res.status === 404) {
+          toast("This preview has expired. Please upload the file again.", "error");
+          restart();
+          return;
+        }
         toast("Could not start the import.", "error");
       } catch (err) {
         toast("Could not reach the server.", "error");
@@ -328,7 +332,6 @@
         if (state.summary) refreshConfirm();
       }
     });
-
     /* ----- Start over ----- */
     function restart() {
       pollId += 1;
