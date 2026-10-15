@@ -4,7 +4,7 @@ from import_export.widgets import Widget
 
 from .models import Article
 
-EXPORT_COLUMNS = ("title", "subtitle", "description", "status", "author")
+EXPORT_COLUMNS = ("uuid","title", "subtitle", "description", "status", "author")
 
 
 class ArticleExportResource(ModelResource):

@@ -13,6 +13,9 @@ from .tasks import run_import_job as run_import_job_for_real
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+import io
+
+from openpyxl import load_workbook
 User = get_user_model()
 
 
@@ -518,7 +521,8 @@ class ArticleExportTests(APITestCase):
         auth(self.client, self.alice)
         rows = self._rows(self.client.get("/articles/export/"))
         self.assertEqual(
-            rows.headers, ["title", "subtitle", "description", "status", "author"]
+            rows.headers,
+            ["uuid", "title", "subtitle", "description", "status", "author"],
         )
         self.assertEqual(sorted(rows["title"]), ["Pub one", "Pub two"])
         self.assertEqual(set(rows["status"]), {"published"})
@@ -532,6 +536,19 @@ class ArticleExportTests(APITestCase):
         rows = self._rows(self.client.get("/articles/export/"))
         self.assertFalse(any(t.startswith("=") for t in rows["title"]))
 
+    def test_export_has_uuid_of_each_article(self):
+        auth(self.client, self.alice)
+        rows = self._rows(self.client.get("/articles/export/"))
+        expected = {
+            str(a.uuid) for a in Article.objects.filter(is_published=True)
+        }
+        self.assertEqual(set(rows["uuid"]), expected)
+
+    def test_export_hides_uuid_column(self):
+        auth(self.client, self.alice)
+        r = self.client.get("/articles/export/")
+        sheet = load_workbook(io.BytesIO(r.content)).active
+        self.assertTrue(sheet.column_dimensions["A"].hidden)
 
 XLSX_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 

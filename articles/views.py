@@ -16,6 +16,8 @@ from .tasks import generate_ai_summary
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from import_export.formats.base_formats import XLSX
+import io
+from openpyxl import load_workbook
 from rest_framework.parsers import MultiPartParser
 from .importing import (
     ImportFileSerializer,
@@ -196,7 +198,13 @@ class ArticleViewSet(
     def export(self, request):
         dataset = ArticleExportResource().export()
         content = XLSX().export_data(dataset)
-        response = HttpResponse(content, content_type=XLSX_CONTENT_TYPE)
+
+        workbook = load_workbook(io.BytesIO(content))
+        workbook.active.column_dimensions["A"].hidden = True
+        buffer = io.BytesIO()
+        workbook.save(buffer)
+
+        response = HttpResponse(buffer.getvalue(), content_type=XLSX_CONTENT_TYPE)
         response["Content-Disposition"] = 'attachment; filename="articles.xlsx"'
         return response
 
