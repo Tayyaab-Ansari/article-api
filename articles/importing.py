@@ -3,8 +3,9 @@ from collections import Counter
 import tablib
 from django.db import transaction
 from rest_framework import serializers
-
-from .resources import ArticleImportResource, StatusWidget
+import uuid
+from .resources import ArticleImportResource, StatusWidget, parse_uuid
+from .models import Article, ImportJob
 from django.core.exceptions import MultipleObjectsReturned
 from .models import ImportJob
 
@@ -94,6 +95,13 @@ def build_preview(dataset, author):
         transaction.set_rollback(True)
 
     source_rows = dataset.dict
+    file_uuids = {
+        u for u in (parse_uuid(s.get("uuid")) for s in source_rows) if u is not None
+    }
+    by_uuid = {
+        a.uuid: a for a in Article.objects.filter(author=author, uuid__in=file_uuids)
+    }
+    seen_uuids = {}
     first_seen = {}
     rows = []
     for index, row in enumerate(result.rows):
@@ -109,14 +117,28 @@ def build_preview(dataset, author):
         else:
             kind = "error"
             messages = _error_messages(row)
-
+        if kind != "error":
+            parsed = parse_uuid(source.get("uuid"))
+            matched = by_uuid.get(parsed) if parsed is not None else None
+            if matched is not None:
+                if parsed in seen_uuids:
+                    kind = "error"
+                    messages = [f"Duplicate uuid: same as row {seen_uuids[parsed]}."]
+                elif (
+                    Article.objects.filter(author=author, title=title)
+                    .exclude(pk=matched.pk)
+                    .exists()
+                ):
+                    kind = "error"
+                    messages = ["Title is already used by another of your articles."]
+                else:
+                    seen_uuids[parsed] = row_number
         if kind != "error":
             if title in first_seen:
                 kind = "error"
                 messages = [f"Duplicate title: same as row {first_seen[title]}."]
             else:
                 first_seen[title] = row_number
-
         rows.append(
             {
                 "row": row_number,
@@ -153,6 +175,7 @@ def dataset_to_rows(dataset):
                 "subtitle": _plain(source["subtitle"]),
                 "description": _plain(source["description"]),
                 "status": _plain(source["status"]),
+                "uuid": _plain(source.get("uuid")),
             }
         )
     return rows
@@ -160,9 +183,11 @@ def dataset_to_rows(dataset):
 
 def rows_to_dataset(rows):
     """Database mein rakhi rows se wapas Dataset banata hai (confirm ke waqt kaam aayega)."""
-    dataset = tablib.Dataset(headers=list(REQUIRED_COLUMNS))
+    dataset = tablib.Dataset(headers=list(REQUIRED_COLUMNS) + ["uuid"])
     for r in rows:
-        dataset.append([r["title"], r["subtitle"], r["description"], r["status"]])
+        dataset.append(
+            [r["title"], r["subtitle"], r["description"], r["status"], r.get("uuid")]
+        )
     return dataset
 class ImportFailed(Exception):
     """Asal import mein koi row save nahi ho saki, is liye poora import wapas."""

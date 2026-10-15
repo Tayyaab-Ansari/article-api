@@ -1,3 +1,4 @@
+import uuid
 from import_export.fields import Field
 from import_export.resources import ModelResource
 from import_export.widgets import Widget
@@ -38,6 +39,15 @@ class StatusWidget(Widget):
         raise ValueError("Status must be 'published' or 'draft'.")
 
 
+def parse_uuid(raw):
+    """Cell ki value se UUID banata hai. Khali ya ghalat format ho to None."""
+    if raw is None:
+        return None
+    try:
+        return uuid.UUID(str(raw).strip())
+    except ValueError:
+        return None
+    
 class ArticleImportResource(ModelResource):
     is_published = Field(
         column_name="status", attribute="is_published", widget=StatusWidget()
@@ -55,7 +65,13 @@ class ArticleImportResource(ModelResource):
 
     def get_queryset(self):
         return Article.objects.filter(author=self.author)
-
+    def get_instance(self, instance_loader, row):
+        wanted = parse_uuid(row.get("uuid"))
+        if wanted is not None:
+            found = self.get_queryset().filter(uuid=wanted).first()
+            if found is not None:
+                return found
+        return super().get_instance(instance_loader, row)
     def before_save_instance(self, instance, row, **kwargs):
         instance.author = self.author
         # Excel ka khali cell None ban kar aata hai, lekin subtitle null nahi ho sakta

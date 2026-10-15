@@ -627,6 +627,68 @@ class ArticleImportPreviewTests(APITestCase):
             self.mine.is_published,
         )
         self.assertEqual(before, after)
+    UUID_HEADERS = ("uuid", "title", "subtitle", "description", "status")
+
+    def _uuid_row(self, article_uuid, title):
+        return [str(article_uuid), title, "s", "d", "draft"]
+
+    def test_uuid_match_with_changed_title_is_conflict(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload([self._uuid_row(self.mine.uuid, "Mine renamed")], headers=self.UUID_HEADERS)
+        )
+        self.assertEqual(r.data["rows"][0]["result"], "conflict")
+
+    def test_unknown_uuid_falls_back_to_title_rule(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload(
+                [
+                    self._uuid_row("11111111-1111-4111-8111-111111111111", "Brand new"),
+                    self._uuid_row("not-a-uuid", "Mine"),
+                ],
+                headers=self.UUID_HEADERS,
+            )
+        )
+        by_row = {row["row"]: row for row in r.data["rows"]}
+        self.assertEqual(by_row[2]["result"], "ready")
+        self.assertEqual(by_row[3]["result"], "conflict")
+
+    def test_other_users_uuid_is_not_matched(self):
+        bobs_uuid = Article.objects.get(title="Bobs").uuid
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload([self._uuid_row(bobs_uuid, "Brand new")], headers=self.UUID_HEADERS)
+        )
+        self.assertEqual(r.data["rows"][0]["result"], "ready")
+
+    def test_uuid_match_with_title_of_another_article_is_error(self):
+        Article.objects.create(
+            title="Other", description="d", author=self.alice, is_published=True
+        )
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload([self._uuid_row(self.mine.uuid, "Other")], headers=self.UUID_HEADERS)
+        )
+        row = r.data["rows"][0]
+        self.assertEqual(row["result"], "error")
+        self.assertIn("already used", row["messages"][0])
+
+    def test_same_uuid_twice_in_file_is_error(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload(
+                [
+                    self._uuid_row(self.mine.uuid, "Mine"),
+                    self._uuid_row(self.mine.uuid, "Mine again"),
+                ],
+                headers=self.UUID_HEADERS,
+            )
+        )
+        by_row = {row["row"]: row for row in r.data["rows"]}
+        self.assertEqual(by_row[2]["result"], "conflict")
+        self.assertEqual(by_row[3]["result"], "error")
+        self.assertIn("Duplicate uuid", by_row[3]["messages"][0])
 
     def test_spaces_around_title_are_ignored(self):
         auth(self.client, self.alice)
@@ -718,11 +780,13 @@ class ArticleImportPreviewTests(APITestCase):
         rows = dataset_to_rows(ds)
         self.assertEqual(
             rows[0],
-            {"row": 2, "title": "A", "subtitle": None, "description": "123", "status": "draft"},
+            {"uuid": None,"row": 2, "title": "A", "subtitle": None, "description": "123", "status": "draft"},
         )
         again = rows_to_dataset(rows)
-        self.assertEqual(again.headers, ["title", "subtitle", "description", "status"])
-        self.assertEqual(again[0], ("A", None, "123", "draft"))
+        self.assertEqual(
+            again.headers, ["title", "subtitle", "description", "status", "uuid"]
+        )
+        self.assertEqual(again[0], ("A", None, "123", "draft", None))
     def test_header_names_ignore_case_and_spaces(self):
         auth(self.client, self.alice)
         upload = xlsx_upload(
