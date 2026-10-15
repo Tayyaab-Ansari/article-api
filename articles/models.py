@@ -93,6 +93,7 @@ class ImportJob(models.Model):
     conflict_count = models.PositiveIntegerField(default=0)
     error_count = models.PositiveIntegerField(default=0)
     ready_count = models.PositiveIntegerField(default=0)
+    selected_count = models.PositiveIntegerField(default=0)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -110,7 +111,7 @@ class ImportJob(models.Model):
 
         with transaction.atomic():
             claimed = ImportJob.objects.filter(pk=self.pk, status="previewed").update(
-                status="queued", update_rows=update_rows or []
+                status="queued", **({"update_rows": update_rows} if update_rows is not None else {})    
             )
             if claimed:
                 transaction.on_commit(lambda: run_import_job.delay(self.pk))
