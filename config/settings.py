@@ -181,10 +181,10 @@ CELERY_BEAT_SCHEDULE = {
     "count-summaries-every-minute": {
         "task": "articles.tasks.count_summaries",
         "schedule": 60.0,
+    },
     "process-waiting-imports-every-5-minutes": {
         "task": "articles.tasks.process_waiting_imports",
         "schedule": 300.0,
-    },
     },
 }
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
