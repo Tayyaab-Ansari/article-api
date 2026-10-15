@@ -92,6 +92,7 @@ class ImportJob(models.Model):
     skipped_count = models.PositiveIntegerField(default=0)
     conflict_count = models.PositiveIntegerField(default=0)
     error_count = models.PositiveIntegerField(default=0)
+    ready_count = models.PositiveIntegerField(default=0)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)
@@ -103,8 +104,7 @@ class ImportJob(models.Model):
     def __str__(self):
         return f"Import #{self.pk} by {self.user} ({self.status})"
     def queue(self, update_rows=None):
-        """previewed se queued karta hai aur worker ko parcha bhejta hai.
-        True: queue hui. False: kisi aur ne pehle hi queue kar di thi."""
+
         from .tasks import run_import_job
 
         with transaction.atomic():
