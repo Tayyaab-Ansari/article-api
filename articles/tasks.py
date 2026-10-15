@@ -1,5 +1,5 @@
 from celery import shared_task
-
+from datetime import timedelta
 import httpx
 from django.conf import settings
 from .models import Article, ImportJob
@@ -102,3 +102,28 @@ def run_import_job(job_id):
     )
     logger.info("Import job %s done: %s", job_id, counts)
     return f"done: {counts}"
+PREVIEW_MAX_AGE_MINUTES = 10
+
+
+@shared_task
+def process_waiting_imports():
+    queued = deleted = 0
+
+    if settings.AUTO_START_CLEAN_IMPORTS:
+        clean_ids = list(
+            ImportJob.objects.filter(
+                status="previewed", error_count=0, conflict_count=0
+            ).values_list("pk", flat=True)
+        )
+        for job_id in clean_ids:
+            job = ImportJob.objects.get(pk=job_id)
+            if job.queue():
+                queued += 1
+
+    cutoff = timezone.now() - timedelta(minutes=PREVIEW_MAX_AGE_MINUTES)
+    deleted, _ = ImportJob.objects.filter(
+        status="previewed", created_at__lt=cutoff
+    ).delete()
+
+    logger.info("Waiting imports: queued=%s, deleted=%s", queued, deleted)
+    return f"queued={queued}, deleted={deleted}"

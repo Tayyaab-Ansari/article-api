@@ -15,8 +15,9 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 import io
-
+from datetime import timedelta
 from openpyxl import load_workbook
+from .tasks import process_waiting_imports
 User = get_user_model()
 
 
@@ -1212,3 +1213,55 @@ class ImportsPageTests(APITestCase):
     def test_articles_page_links_to_imports(self):
         r = self.client.get("/")
         self.assertContains(r, 'href="/imports/"')
+class ProcessWaitingImportsTests(APITestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.alice = User.objects.create_user("alice", password="pass12345")
+
+    def _job(self, minutes_old=0, conflicts=0, errors=0):
+        job = ImportJob.objects.create(
+            user=self.alice, conflict_count=conflicts, error_count=errors
+        )
+        ImportJob.objects.filter(pk=job.pk).update(
+            created_at=timezone.now() - timedelta(minutes=minutes_old)
+        )
+        return job
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    @patch("articles.tasks.run_import_job")
+    def test_clean_job_is_queued_when_flag_on(self, mock_task):
+        job = self._job()
+        with self.captureOnCommitCallbacks(execute=True):
+            process_waiting_imports()
+        job.refresh_from_db()
+        self.assertEqual(job.status, "queued")
+        mock_task.delay.assert_called_once_with(job.pk)
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    def test_conflict_job_is_not_queued_and_young_one_stays(self):
+        job = self._job(minutes_old=3, conflicts=1)
+        process_waiting_imports()
+        job.refresh_from_db()
+        self.assertEqual(job.status, "previewed")
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    def test_old_conflict_job_is_deleted(self):
+        job = self._job(minutes_old=11, errors=1)
+        process_waiting_imports()
+        self.assertFalse(ImportJob.objects.filter(pk=job.pk).exists())
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=False)
+    def test_flag_off_clean_job_stays_when_young_and_is_deleted_when_old(self):
+        young = self._job(minutes_old=3)
+        old = self._job(minutes_old=11)
+        process_waiting_imports()
+        young.refresh_from_db()
+        self.assertEqual(young.status, "previewed")
+        self.assertFalse(ImportJob.objects.filter(pk=old.pk).exists())
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    def test_queued_job_is_never_deleted(self):
+        job = self._job(minutes_old=30)
+        ImportJob.objects.filter(pk=job.pk).update(status="done")
+        process_waiting_imports()
+        self.assertTrue(ImportJob.objects.filter(pk=job.pk).exists())
