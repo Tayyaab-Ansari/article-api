@@ -2,7 +2,8 @@ from django.contrib.auth import get_user_model
 from rest_framework import status
 from rest_framework.test import APITestCase
 from rest_framework_simplejwt.tokens import AccessToken
-
+from unittest.mock import patch
+from django.test import override_settings
 from .models import Article , ImportJob
 from unittest.mock import patch
 from django.utils import timezone
@@ -811,6 +812,33 @@ class ArticleImportPreviewTests(APITestCase):
         job = ImportJob.objects.get(pk=r.data["job_id"])
         self.assertEqual(job.conflict_count, 1)
         self.assertEqual(job.error_count, 1)
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    @patch("articles.tasks.run_import_job")
+    def test_clean_preview_auto_starts_when_flag_on(self, mock_task):
+        auth(self.client, self.alice)
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self._post(xlsx_upload([["Brand new", "s", "d", "published"]]))
+        self.assertTrue(r.data["auto_started"])
+        self.assertEqual(ImportJob.objects.get(pk=r.data["job_id"]).status, "queued")
+        mock_task.delay.assert_called_once_with(r.data["job_id"])
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    @patch("articles.tasks.run_import_job")
+    def test_conflict_preview_is_not_auto_started(self, mock_task):
+        auth(self.client, self.alice)
+        with self.captureOnCommitCallbacks(execute=True):
+            r = self._post(xlsx_upload([["Mine", "s", "d", "draft"]]))
+        self.assertFalse(r.data["auto_started"])
+        self.assertEqual(ImportJob.objects.get(pk=r.data["job_id"]).status, "previewed")
+        mock_task.delay.assert_not_called()
+
+    @override_settings(AUTO_START_CLEAN_IMPORTS=False)
+    def test_flag_off_never_auto_starts(self):
+        auth(self.client, self.alice)
+        r = self._post(xlsx_upload([["Brand new", "s", "d", "published"]]))
+        self.assertFalse(r.data["auto_started"])
+
 class ImportJobModelTests(APITestCase):
     def test_new_job_defaults(self):
         user = User.objects.create_user("jobber", password="pass12345")
@@ -994,7 +1022,7 @@ class ImportJobApiTests(APITestCase):
         self.assertEqual(self.client.get(f"/import-jobs/{job.pk}/").status_code, 404)
         self.assertEqual(self._confirm(job).status_code, 404)
 
-    @patch("articles.import_views.run_import_job")
+    @patch("articles.tasks.run_import_job")
     def test_confirm_queues_the_task(self, mock_task):
         auth(self.client, self.alice)
         job = self._job(rows=[["A", "s", "d", "draft"], ["B", "s", "d", "draft"]])
@@ -1016,7 +1044,7 @@ class ImportJobApiTests(APITestCase):
         job.refresh_from_db()
         self.assertEqual(job.update_rows, [])
 
-    @patch("articles.import_views.run_import_job")
+    @patch("articles.tasks.run_import_job")
     def test_second_confirm_is_409(self, mock_task):
         auth(self.client, self.alice)
         job = self._job()

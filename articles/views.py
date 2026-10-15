@@ -2,7 +2,7 @@ from django.db.models import Q
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import mixins, permissions, viewsets
 from rest_framework.decorators import action
-
+from django.conf import settings
 from .models import Article
 from .permissions import IsAuthorOrReadOnly
 from .serializers import ArticleSerializer
@@ -229,5 +229,14 @@ class ArticleViewSet(
             conflict_count=preview["summary"]["conflict"],
             error_count=preview["summary"]["error"],
         )
+
+        auto_started = False
+        if (
+            settings.AUTO_START_CLEAN_IMPORTS
+            and job.error_count == 0
+            and job.conflict_count == 0
+        ):
+            auto_started = job.queue()
+        preview["auto_started"] = auto_started
         preview["job_id"] = job.pk
         return Response(preview)

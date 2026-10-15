@@ -1,4 +1,4 @@
-from django.db import transaction
+
 from django.db.models import Count
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
@@ -103,15 +103,7 @@ class ImportJobViewSet(
         serializer = ImportConfirmSerializer(data=request.data, context={"job": job})
         serializer.is_valid(raise_exception=True)
         update_rows = serializer.validated_data["update_rows"]
-
-        with transaction.atomic():
-            claimed = ImportJob.objects.filter(pk=job.pk, status="previewed").update(
-                status="queued", update_rows=update_rows
-            )
-            if claimed:
-                transaction.on_commit(lambda: run_import_job.delay(job.pk))
-
-        if not claimed:
+        if not job.queue(update_rows):
             return Response(
                 {"detail": "This import was already confirmed."}, status=409
             )

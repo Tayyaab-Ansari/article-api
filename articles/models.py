@@ -102,3 +102,15 @@ class ImportJob(models.Model):
 
     def __str__(self):
         return f"Import #{self.pk} by {self.user} ({self.status})"
+    def queue(self, update_rows=None):
+        """previewed se queued karta hai aur worker ko parcha bhejta hai.
+        True: queue hui. False: kisi aur ne pehle hi queue kar di thi."""
+        from .tasks import run_import_job
+
+        with transaction.atomic():
+            claimed = ImportJob.objects.filter(pk=self.pk, status="previewed").update(
+                status="queued", update_rows=update_rows or []
+            )
+            if claimed:
+                transaction.on_commit(lambda: run_import_job.delay(self.pk))
+        return bool(claimed)
