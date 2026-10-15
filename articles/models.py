@@ -90,6 +90,8 @@ class ImportJob(models.Model):
     new_count = models.PositiveIntegerField(default=0)
     updated_count = models.PositiveIntegerField(default=0)
     skipped_count = models.PositiveIntegerField(default=0)
+    conflict_count = models.PositiveIntegerField(default=0)
+    error_count = models.PositiveIntegerField(default=0)
     error_message = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     started_at = models.DateTimeField(null=True, blank=True)

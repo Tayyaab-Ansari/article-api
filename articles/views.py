@@ -226,6 +226,8 @@ class ArticleViewSet(
             user=request.user,
             filename=uploaded.name[:255],
             rows=dataset_to_rows(dataset),
+            conflict_count=preview["summary"]["conflict"],
+            error_count=preview["summary"]["error"],
         )
         preview["job_id"] = job.pk
         return Response(preview)

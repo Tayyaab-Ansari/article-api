@@ -797,6 +797,20 @@ class ArticleImportPreviewTests(APITestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.data["rows"][0]["result"], "ready")
         self.assertEqual(r.data["rows"][0]["status"], "published")
+    def test_preview_saves_conflict_and_error_counts(self):
+        auth(self.client, self.alice)
+        r = self._post(
+            xlsx_upload(
+                [
+                    ["Brand new", "s", "d", "published"],
+                    ["Bad status", "s", "d", "pending"],
+                    ["Mine", "s", "d", "draft"],
+                ]
+            )
+        )
+        job = ImportJob.objects.get(pk=r.data["job_id"])
+        self.assertEqual(job.conflict_count, 1)
+        self.assertEqual(job.error_count, 1)
 class ImportJobModelTests(APITestCase):
     def test_new_job_defaults(self):
         user = User.objects.create_user("jobber", password="pass12345")
