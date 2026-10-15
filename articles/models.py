@@ -104,7 +104,8 @@ class ImportJob(models.Model):
     def __str__(self):
         return f"Import #{self.pk} by {self.user} ({self.status})"
     def queue(self, update_rows=None):
-
+        """previewed se queued karta hai aur worker ko parcha bhejta hai.
+        True: queue hui. False: kisi aur ne pehle hi queue kar di thi."""
         from .tasks import run_import_job
 
         with transaction.atomic():
