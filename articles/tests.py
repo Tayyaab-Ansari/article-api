@@ -1205,6 +1205,62 @@ class ImportJobListApiTests(APITestCase):
         with CaptureQueriesContext(connection) as many:
             self.client.get("/import-jobs/")
         self.assertEqual(len(few), len(many))
+    def _selection(self, job, body):
+        return self.client.patch(
+            f"/import-jobs/{job.pk}/selection/", body, format="json"
+        )
+
+    def test_selection_requires_token(self):
+        job = self._job()
+        self.assertEqual(self._selection(job, {"update_rows": []}).status_code, 401)
+
+    def test_selection_saves_rows_and_count(self):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["A", "s", "d", "draft"], ["B", "s", "d", "draft"]])
+        r = self._selection(job, {"update_rows": [2, 3]})
+        self.assertEqual(r.status_code, 200)
+        job.refresh_from_db()
+        self.assertEqual(job.update_rows, [2, 3])
+        self.assertEqual(job.selected_count, 2)
+
+    def test_selection_can_be_cleared(self):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["A", "s", "d", "draft"]])
+        self._selection(job, {"update_rows": [2]})
+        r = self._selection(job, {"update_rows": []})
+        self.assertEqual(r.status_code, 200)
+        job.refresh_from_db()
+        self.assertEqual(job.selected_count, 0)
+
+    def test_selection_rejects_unknown_row(self):
+        auth(self.client, self.alice)
+        job = self._job(rows=[["A", "s", "d", "draft"]])
+        r = self._selection(job, {"update_rows": [99]})
+        self.assertEqual(r.status_code, 400)
+
+    def test_selection_of_other_users_job_is_404(self):
+        job = self._job(user=self.alice)
+        auth(self.client, self.bob)
+        self.assertEqual(self._selection(job, {"update_rows": []}).status_code, 404)
+
+    def test_selection_after_queued_is_409(self):
+        auth(self.client, self.alice)
+        job = self._job(status="queued")
+        r = self._selection(job, {"update_rows": []})
+        self.assertEqual(r.status_code, 409)
+
+    @patch("articles.tasks.run_import_job")
+    def test_queue_without_argument_keeps_saved_selection(self, mock_task):
+        job = self._job(rows=[["A", "s", "d", "draft"]])
+        ImportJob.objects.filter(pk=job.pk).update(update_rows=[2], selected_count=1)
+        job.refresh_from_db()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertTrue(job.queue())
+        job.refresh_from_db()
+        self.assertEqual(job.status, "queued")
+        self.assertEqual(job.update_rows, [2])
+        self.assertEqual(job.selected_count, 1)
+        
 class ImportsPageTests(APITestCase):
     def test_imports_page_is_served(self):
         r = self.client.get("/imports/")

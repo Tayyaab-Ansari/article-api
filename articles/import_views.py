@@ -110,3 +110,27 @@ class ImportJobViewSet(
 
         job.refresh_from_db()
         return Response(ImportJobSerializer(job).data, status=202)
+    @extend_schema(
+        request=ImportConfirmSerializer, responses={200: OpenApiTypes.OBJECT}
+    )
+    @action(detail=True, methods=["patch"], url_path="selection")
+    def selection(self, request, pk=None):
+        job = self.get_object()
+        if job.user_id != request.user.id:
+            return Response(
+                {"detail": "Only the owner can change this selection."}, status=403
+            )
+        serializer = ImportConfirmSerializer(data=request.data, context={"job": job})
+        serializer.is_valid(raise_exception=True)
+        update_rows = serializer.validated_data["update_rows"]
+
+        saved = ImportJob.objects.filter(pk=job.pk, status="previewed").update(
+            update_rows=update_rows, selected_count=len(update_rows)
+        )
+        if not saved:
+            return Response(
+                {"detail": "This import was already started."}, status=409
+            )
+        return Response(
+            {"update_rows": update_rows, "selected_count": len(update_rows)}
+        )
