@@ -6,6 +6,7 @@ from .models import Article, ImportJob
 from django.utils import timezone
 from .importing import run_import
 from celery.utils.log import get_task_logger
+from django.db.models import Q
 
 logger = get_task_logger(__name__)
 
@@ -112,7 +113,8 @@ def process_waiting_imports():
     if settings.AUTO_START_CLEAN_IMPORTS:
         clean_ids = list(
             ImportJob.objects.filter(
-                status="previewed", ready_count__gt=0
+                Q(ready_count__gt=0) | Q(selected_count__gt=0),
+                status="previewed",
             ).values_list("pk", flat=True)
         )
         for job_id in clean_ids:

@@ -18,6 +18,7 @@ import io
 from datetime import timedelta
 from openpyxl import load_workbook
 from .tasks import process_waiting_imports
+from django.db.models import Q
 User = get_user_model()
 
 
@@ -1218,17 +1219,19 @@ class ProcessWaitingImportsTests(APITestCase):
     @classmethod
     def setUpTestData(cls):
         cls.alice = User.objects.create_user("alice", password="pass12345")
-    def _job(self, minutes_old=0, conflicts=0, errors=0, ready=1):
+    def _job(self, minutes_old=0, conflicts=0, errors=0, ready=1, selected=0):
         job = ImportJob.objects.create(
             user=self.alice,
             conflict_count=conflicts,
             error_count=errors,
             ready_count=ready,
+            selected_count=selected,
         )
         ImportJob.objects.filter(pk=job.pk).update(
             created_at=timezone.now() - timedelta(minutes=minutes_old)
         )
         return job
+    
 
     @override_settings(AUTO_START_CLEAN_IMPORTS=True)
     @patch("articles.tasks.run_import_job")
@@ -1276,3 +1279,11 @@ class ProcessWaitingImportsTests(APITestCase):
         process_waiting_imports()
         job.refresh_from_db()
         self.assertEqual(job.status, "previewed")
+    @override_settings(AUTO_START_CLEAN_IMPORTS=True)
+    @patch("articles.tasks.run_import_job")
+    def test_job_with_only_selected_conflicts_is_queued(self, mock_task):
+        job = self._job(conflicts=3, ready=0, selected=2)
+        with self.captureOnCommitCallbacks(execute=True):
+            process_waiting_imports()
+        job.refresh_from_db()
+        self.assertEqual(job.status, "queued")
