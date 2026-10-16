@@ -132,7 +132,31 @@
       btn.disabled = total === 0;
       $("all-conflicts").checked = boxes.length > 0 && chosen === boxes.length;
     }
-
+    let saveTimer = 0;
+    function saveSelection() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
+        if (!state.jobId) return;
+        try {
+          const res = await apiFetch("/import-jobs/" + state.jobId + "/selection/", {
+            method: "PATCH",
+            body: JSON.stringify({ update_rows: selectedRows() }),
+          });
+          if (res.status === 401) return;
+          if (res.status === 404) {
+            toast("This preview has expired. Please upload the file again.", "error");
+            restart();
+            return;
+          }
+          if (res.status === 409) {
+            toast("This import was already started.");
+            startProgress(state.jobId);
+          }
+        } catch (err) {
+          /* network hiccup: confirm still sends the selection */
+        }
+      }, 400);
+    }
     function showPreview(data, filename) {
       state.jobId = data.job_id;
       state.summary = data.summary;
@@ -194,9 +218,13 @@
         box.checked = e.target.checked;
       });
       refreshConfirm();
+      saveSelection();
     });
     $("rows").addEventListener("change", (e) => {
-      if (e.target.matches("input[data-row]")) refreshConfirm();
+      if (e.target.matches("input[data-row]")) {
+        refreshConfirm();
+        saveSelection();
+      }
     });
 
     /* ----- Upload ----- */
